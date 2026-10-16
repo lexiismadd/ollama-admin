@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { CapabilityIcons } from "@/components/ui/capability-icons";
-import { Card } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -17,11 +16,23 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { useServers } from "@/lib/hooks/use-servers";
 import { useUnloadModel } from "@/lib/hooks/use-unload-model";
+import { extractContextLength } from "@/lib/catalog-cloud";
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+function formatContextLength(length: number | null | undefined): string | null {
+  if (length == null) return null;
+  if (length >= 1024) return `${Math.round(length / 1024)}k`;
+  return `${length}`;
+}
+
+function displayName(family: string | undefined, parentModel: string | undefined, name: string): string {
+  if (parentModel && parentModel !== name) return parentModel;
+  return family || "—";
 }
 
 export default function ModelsPage() {
@@ -32,7 +43,6 @@ export default function ModelsPage() {
   const unloadModel = useUnloadModel(tc);
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [running, setRunning] = useState<OllamaRunningModel[]>([]);
-  const [capMap, setCapMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
   const [search, setSearch] = useState("");
@@ -59,14 +69,6 @@ export default function ModelsPage() {
       const runningData = runningRes.ok ? await runningRes.json() : { models: [] };
       setModels(modelsData.models || []);
       setRunning(runningData.models || []);
-      fetch("/api/catalog")
-        .then((r) => (r.ok ? r.json() : []))
-        .then((catalog: { id: string; capabilities: string[] }[]) => {
-          const map: Record<string, string[]> = {};
-          for (const m of catalog) map[m.id] = m.capabilities;
-          setCapMap(map);
-        })
-        .catch(() => {});
     } catch {
       setConnectionError(true);
       setModels([]);
@@ -201,42 +203,79 @@ export default function ModelsPage() {
       {filtered.length === 0 ? (
         <EmptyState icon={Search} title={t("noResults")} description={t("noResultsDescription")} />
       ) : (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((model) => (
-            <Card key={model.name}>
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="truncate font-medium" title={model.name}>{model.name}</h3>
-                    {isRunning(model.name) && (
-                      <Badge variant="success" className="shrink-0">
-                        <Cpu className="mr-1 h-3 w-3" />
-                        {t("loaded")} {getVram(model.name) && `· ${getVram(model.name)}`}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-[hsl(var(--muted-foreground))]">
-                    {formatBytes(model.size)}
-                    {capMap[model.name.split(":")[0]] && (
-                      <span className="ml-2 inline-flex align-middle">
-                        <CapabilityIcons capabilities={capMap[model.name.split(":")[0]]} />
-                      </span>
-                    )}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {model.details?.family && <Badge variant="muted" className="text-[10px]">{model.details.family}</Badge>}
-                    {model.details?.parameter_size && <Badge variant="muted" className="text-[10px]">{model.details.parameter_size}</Badge>}
-                    {model.details?.quantization_level && <Badge variant="muted" className="text-[10px]">{model.details.quantization_level}</Badge>}
-                  </div>
-                  <p className="mt-2 text-xs text-[hsl(var(--muted-foreground))]">
-                    {t("modified")}: {new Date(model.modified_at).toLocaleDateString()}
-                  </p>
+        <div className="mt-4 overflow-hidden rounded-lg border border-[hsl(var(--border))]">
+          {/* Column headers */}
+          <div className="flex items-center gap-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.6)] px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            <span className="flex-1">{t("name")}</span>
+            <span className="w-28 shrink-0 hidden lg:block">{t("family")}</span>
+            <span className="w-16 shrink-0 hidden lg:block text-right">{t("params")}</span>
+            <span className="w-20 shrink-0 hidden xl:block">{t("quantization")}</span>
+            <span className="w-20 shrink-0 hidden md:block text-right">{t("context")}</span>
+            <span className="w-24 shrink-0 text-right">{t("size")}</span>
+            <span className="w-24 shrink-0 hidden sm:block text-right">{t("modified")}</span>
+            <span className="w-36 shrink-0 text-right">{t("actions")}</span>
+          </div>
+
+          {filtered.map((model, idx) => {
+            const runningVram = getVram(model.name);
+            const isLast = idx === filtered.length - 1;
+            return (
+              <div
+                key={model.name}
+                className={`flex items-center gap-4 px-4 py-3 text-sm ${!isLast ? "border-b border-[hsl(var(--border))]" : ""}`}
+              >
+                {/* Name + capabilities + running badge */}
+                <div className="min-w-0 flex-1 flex items-center gap-2">
+                  <span className="font-semibold truncate" title={model.name}>{model.name}</span>
+                  {model.capabilities && (
+                    <span className="flex shrink-0 items-center gap-1">
+                      <CapabilityIcons capabilities={model.capabilities} />
+                    </span>
+                  )}
+                  {isRunning(model.name) && (
+                    <Badge variant="success" className="shrink-0">
+                      <Cpu className="mr-1 h-3 w-3" />
+                      {runningVram ? `${t("loaded")} · ${runningVram}` : t("loaded")}
+                    </Badge>
+                  )}
                 </div>
-                <div className="flex shrink-0 gap-1.5">
+
+                {/* Parent model / family */}
+                <span className="w-28 shrink-0 hidden lg:block text-xs text-[hsl(var(--muted-foreground))] truncate" title={model.details?.parent_model || model.details?.family || ""}>
+                  {displayName(model.details?.family, model.details?.parent_model, model.name)}
+                </span>
+
+                {/* Parameter size */}
+                <span className="w-16 shrink-0 hidden lg:block text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+                  {model.details?.parameter_size || "—"}
+                </span>
+
+                {/* Quantization level */}
+                <span className="w-20 shrink-0 hidden xl:block text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                  {model.details?.quantization_level || "—"}
+                </span>
+
+                {/* Context length */}
+                <span className="w-20 shrink-0 hidden md:block text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+                  {formatContextLength(model.context_length) || "—"}
+                </span>
+
+                {/* Disk size */}
+                <span className="w-24 shrink-0 text-right text-xs tabular-nums">
+                  {formatBytes(model.size)}
+                </span>
+
+                {/* Modified */}
+                <span className="w-24 shrink-0 hidden sm:block text-right text-xs text-[hsl(var(--muted-foreground))]">
+                  {new Date(model.modified_at).toLocaleDateString()}
+                </span>
+
+                {/* Actions */}
+                <div className="w-36 shrink-0 flex items-center justify-end gap-1.5">
                   {isRunning(model.name) && (
                     <Button variant="secondary" size="sm" onClick={() => handleUnload(model.name)} title={t("unload")}>
                       <Upload className="h-4 w-4" />
-                      {t("unload")}
+                      <span className="hidden lg:inline">{t("unload")}</span>
                     </Button>
                   )}
                   <Button variant="secondary" size="sm" onClick={() => handleInspect(model.name)} title={t("inspect")}>
@@ -247,18 +286,26 @@ export default function ModelsPage() {
                   </Button>
                 </div>
               </div>
-            </Card>
-          ))}
+            );
+          })}
         </div>
       )}
 
       <Modal open={!!inspecting} onClose={() => setInspecting(null)} title={inspectName}>
         {inspecting && (
           <div className="space-y-3 text-sm">
-            <div><span className="font-medium">Family:</span> {inspecting.details?.family || "—"}</div>
-            <div><span className="font-medium">Parameters:</span> {inspecting.details?.parameter_size || "—"}</div>
-            <div><span className="font-medium">Quantization:</span> {inspecting.details?.quantization_level || "—"}</div>
+            <div><span className="font-medium">{t("family")}:</span> {inspecting.details?.family || "—"}</div>
+            <div><span className="font-medium">{t("parentModel")}:</span> {inspecting.details?.parent_model || "—"}</div>
+            <div><span className="font-medium">{t("params")}:</span> {inspecting.details?.parameter_size || "—"}</div>
+            <div><span className="font-medium">{t("quantization")}:</span> {inspecting.details?.quantization_level || "—"}</div>
+            <div><span className="font-medium">{t("context")}:</span> {formatContextLength(extractContextLength(inspecting.model_info)) || "—"}</div>
             <div><span className="font-medium">Format:</span> {inspecting.details?.format || "—"}</div>
+            {inspecting.capabilities && (
+              <div className="flex items-center gap-2">
+                <span className="font-medium">{t("capabilities")}:</span>
+                <CapabilityIcons capabilities={inspecting.capabilities} />
+              </div>
+            )}
             {inspecting.parameters && (
               <div>
                 <span className="font-medium">Parameters:</span>

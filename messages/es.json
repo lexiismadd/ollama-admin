@@ -186,7 +186,12 @@
       "embedding": "Embedding",
       "thinking": "Razonamiento",
       "code": "Código"
-    }
+    },
+    "family": "Familia",
+    "params": "Param.",
+    "quant": "Cuant.",
+    "context": "Contexto",
+    "viewOnOllama": "Ver en ollama.com"
   },
   "admin": {
     "models": {
@@ -218,7 +223,11 @@
       "deleteSuccess": "Modelo \"{model}\" eliminado",
       "deleteError": "Error al eliminar modelo",
       "copyCode": "Copiar código",
-      "copied": "Copiado"
+      "copied": "Copiado",
+      "params": "Param.",
+      "context": "Contexto",
+      "parentModel": "Modelo padre",
+      "actions": "Acciones"
     },
     "servers": {
       "title": "Servidores",
