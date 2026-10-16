@@ -2,8 +2,8 @@
 
 import { useTranslations } from "next-intl";
 import { useSession } from "next-auth/react";
-import { useEffect, useState, useRef, useMemo } from "react";
-import { Search, Check, Download, Loader2 } from "lucide-react";
+import { useEffect, useState, useRef, useMemo, useCallback } from "react";
+import { Search, Check, Download, Loader2, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -71,6 +71,7 @@ export default function DiscoverPage() {
   const [search, setSearch] = useState("");
   const [selectedCaps, setSelectedCaps] = useState<string[]>(["text"]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [downloadedModels, setDownloadedModels] = useState<Set<string>>(new Set());
   const [downloadingRefs, setDownloadingRefs] = useState<Set<string>>(new Set());
   const [gpuSpecs, setGpuSpecs] = useState<GpuSpecs | null>(null);
@@ -159,18 +160,52 @@ export default function DiscoverPage() {
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
   }, [downloadingRefs.size, selectedServer, t, toast]);
 
-  useEffect(() => {
-    const loadCatalog = async () => {
+  const loadCatalog = useCallback(
+    async (opts?: { force?: boolean }) => {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (selectedCaps.length > 0) params.set("c", selectedCaps.join(","));
-      const r = await fetch(`/api/catalog?${params}`);
-      const data = await r.json();
-      if (Array.isArray(data)) setModels(data);
-      setLoading(false);
-    };
+      if (opts?.force) params.set("refresh", "1");
+      try {
+        const r = await fetch(`/api/catalog?${params}`);
+        if (!r.ok) {
+          toast(t("refreshError"), "error");
+          return;
+        }
+        const data = await r.json();
+        if (Array.isArray(data)) setModels(data);
+        else toast(t("refreshError"), "error");
+      } catch {
+        toast(t("refreshError"), "error");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [search, selectedCaps, toast, t]
+  );
+
+  useEffect(() => {
     void loadCatalog();
-  }, [search, selectedCaps]);
+  }, [loadCatalog]);
+
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const seedRes = await fetch("/api/catalog/seed", { method: "POST" });
+      if (!seedRes.ok) {
+        // Seed endpoint is admin-only; force-refresh via GET instead.
+        await loadCatalog({ force: true });
+      } else {
+        await loadCatalog();
+      }
+      toast(t("refreshSuccess"), "success");
+    } catch {
+      toast(t("refreshError"), "error");
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const toggleCap = (cap: string) => {
     setSelectedCaps((prev) => prev.includes(cap) ? prev.filter((c) => c !== cap) : [...prev, cap]);
@@ -257,11 +292,25 @@ export default function DiscoverPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">{t("title")}</h1>
-        {gpuLabel && (
-          <span className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2.5 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
-            {gpuLabel}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {gpuLabel && (
+            <span className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2.5 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
+              {gpuLabel}
+            </span>
+          )}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 rounded-lg border border-[hsl(var(--border))] px-3 py-1.5 text-xs transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-50"
+          >
+            {refreshing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            {refreshing ? t("refreshing") : t("refreshCatalog")}
+          </button>
+        </div>
       </div>
 
       {/* Search + Server */}

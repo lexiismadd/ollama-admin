@@ -9,7 +9,9 @@ interface CatalogCapabilities {
 }
 
 let catalogCache: CatalogCapabilities | null = null;
+let catalogCacheAt = 0;
 let catalogFetchPromise: Promise<CatalogCapabilities> | null = null;
+const CATALOG_TTL = 30 * 60 * 1000; // 30 minutes — revalidate stale capability sets
 
 async function fetchCatalogCapabilities(): Promise<CatalogCapabilities> {
   try {
@@ -29,10 +31,12 @@ async function fetchCatalogCapabilities(): Promise<CatalogCapabilities> {
 }
 
 export async function loadCatalogCapabilities(): Promise<void> {
-  if (catalogCache) return;
+  if (catalogCache && Date.now() - catalogCacheAt < CATALOG_TTL) return;
+  // Stale-while-revalidate: serve the cached sets while a fresh fetch runs.
   if (!catalogFetchPromise) {
     catalogFetchPromise = fetchCatalogCapabilities().then((caps) => {
       catalogCache = caps;
+      catalogCacheAt = Date.now();
       return caps;
     });
   }
