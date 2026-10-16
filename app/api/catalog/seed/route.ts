@@ -1,10 +1,10 @@
 export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/require-admin";
-import { clearCatalogCache, isCatalogCacheStale, scrapeAllModels } from "@/lib/catalog";
+import { getCatalog } from "@/lib/catalog";
 
-// POST /api/catalog/seed — force-refresh the scraped model catalog.
-// Documented in README.md; admin-only like the other admin APIs.
+// POST /api/catalog/seed — force-refresh the catalog (Ollama.com cloud API when
+// OLLAMA_API_KEY is set, ollama.com scrape otherwise). Admin-only.
 export async function POST() {
   const session = await requireAdmin();
   if (!session) {
@@ -12,12 +12,12 @@ export async function POST() {
   }
 
   try {
-    clearCatalogCache();
-    const models = await scrapeAllModels(true);
+    const { entries, stale, source } = await getCatalog(true);
     return NextResponse.json({
-      count: models.length,
+      count: entries.length,
       timestamp: Date.now(),
-      stale: isCatalogCacheStale(),
+      stale,
+      source,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to refresh catalog";

@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
-import { catalogCache, isCatalogCacheStale, scrapeAllModels } from "@/lib/catalog";
+import { getCatalog } from "@/lib/catalog";
 
 export async function GET(req: NextRequest) {
   const search = req.nextUrl.searchParams.get("q")?.toLowerCase() || "";
@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
     : [];
 
   try {
-    let models = await scrapeAllModels(refresh);
+    const { entries, stale } = await getCatalog(refresh);
+    let models = entries;
 
     if (search) {
       models = models.filter(
@@ -27,10 +28,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Serve-stale signal: if the cache predates the TTL, the last scrape
-    // failed and the client is seeing older data.
+    // Serve-stale signal: the fetch failed and the client is seeing an older
+    // cached copy from the database.
     const headers: Record<string, string> = {};
-    if (catalogCache && isCatalogCacheStale()) headers["X-Catalog-Stale"] = "true";
+    if (stale) headers["X-Catalog-Stale"] = "true";
     return NextResponse.json(models, { headers });
   } catch {
     return NextResponse.json(

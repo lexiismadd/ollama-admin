@@ -12,6 +12,8 @@ export interface OllamaModel {
     parameter_size: string;
     quantization_level: string;
   };
+  capabilities?: string[];
+  context_length?: number | null;
 }
 
 export interface OllamaRunningModel {
@@ -248,6 +250,7 @@ export interface OllamaShowResponse {
     parameter_size: string;
     quantization_level: string;
   };
+  capabilities?: string[];
   model_info: Record<string, unknown>;
 }
 
