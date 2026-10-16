@@ -186,7 +186,12 @@
       "embedding": "Memory",
       "thinking": "Brain",
       "code": "Secret Code"
-    }
+    },
+    "family": "Crew",
+    "params": "Params",
+    "quant": "Squish",
+    "context": "Context",
+    "viewOnOllama": "See on ollama.com"
   },
   "admin": {
     "models": {
@@ -218,7 +223,11 @@
       "deleteSuccess": "Removed \"{model}\"!",
       "deleteError": "Couldn't remove it!",
       "copyCode": "Copy code",
-      "copied": "Copied!"
+      "copied": "Copied!",
+      "params": "Params",
+      "context": "Context",
+      "parentModel": "Parent Crew",
+      "actions": "Actions"
     },
     "servers": {
       "title": "My Ships (Servers)",

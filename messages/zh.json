@@ -186,7 +186,12 @@
       "embedding": "嵌入",
       "thinking": "思维",
       "code": "代码"
-    }
+    },
+    "family": "系列",
+    "params": "参数",
+    "quant": "量化",
+    "context": "上下文",
+    "viewOnOllama": "在 ollama.com 查看"
   },
   "admin": {
     "models": {
@@ -218,7 +223,11 @@
       "deleteSuccess": "模型 {model} 已删除",
       "deleteError": "删除模型出错",
       "copyCode": "复制代码",
-      "copied": "已复制"
+      "copied": "已复制",
+      "params": "参数",
+      "context": "上下文",
+      "parentModel": "父模型",
+      "actions": "操作"
     },
     "servers": {
       "title": "服务器",
