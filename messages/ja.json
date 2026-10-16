@@ -186,7 +186,12 @@
       "embedding": "埋め込み",
       "thinking": "思考",
       "code": "コード"
-    }
+    },
+    "family": "ファミリー",
+    "params": "パラメータ",
+    "quant": "量子化",
+    "context": "コンテキスト",
+    "viewOnOllama": "ollama.com で見る"
   },
   "admin": {
     "models": {
@@ -218,7 +223,11 @@
       "deleteSuccess": "モデル「{model}」を削除しました",
       "deleteError": "モデルの削除エラー",
       "copyCode": "コードをコピー",
-      "copied": "コピーしました"
+      "copied": "コピーしました",
+      "params": "パラメータ",
+      "context": "コンテキスト",
+      "parentModel": "親モデル",
+      "actions": "アクション"
     },
     "servers": {
       "title": "サーバー",

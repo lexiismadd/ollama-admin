@@ -186,7 +186,12 @@
       "embedding": "एम्बेडिंग",
       "thinking": "सोच",
       "code": "कोड"
-    }
+    },
+    "family": "परिवार",
+    "params": "पैरामी.",
+    "quant": "क्वांट",
+    "context": "संदर्भ",
+    "viewOnOllama": "ollama.com पर देखें"
   },
   "admin": {
     "models": {
@@ -218,7 +223,11 @@
       "deleteSuccess": "मॉडल \"{model}\" हटाया गया",
       "deleteError": "मॉडल हटाने में त्रुटि",
       "copyCode": "कोड कॉपी करें",
-      "copied": "कॉपी हो गया"
+      "copied": "कॉपी हो गया",
+      "params": "पैरामी.",
+      "context": "संदर्भ",
+      "parentModel": "पैरेंट मॉडल",
+      "actions": "क्रियाएँ"
     },
     "servers": {
       "title": "सर्वर",

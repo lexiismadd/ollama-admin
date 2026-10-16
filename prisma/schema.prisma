@@ -92,14 +92,21 @@ model Preset {
 }
 
 model CatalogModel {
-  id          String    @id
-  name        String
-  description String?
-  family      String?
-  tags        String
-  pullCount   Int?
-  lastUpdated DateTime?
-  cachedAt    DateTime  @default(now())
+  id                String    @id
+  name              String
+  description       String?
+  family            String?
+  parentModel       String?
+  parameterSize     String?
+  quantizationLevel String?
+  contextLength     Int?
+  sizeBytes         BigInt?
+  url               String?
+  capabilities      String    @default("")
+  sizes             String    @default("")
+  pullCount         String?
+  lastUpdated       String?
+  cachedAt          DateTime  @default(now())
 }
 
 model ApiKey {

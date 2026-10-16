@@ -1,5 +1,30 @@
 import * as cheerio from "cheerio";
-import { ProxyAgent } from "undici";
+import { ProxyAgent, } from "undici";
+import { prisma } from "@/lib/prisma";
+import {
+  catalogPageUrl,
+  fetchCloudCatalog,
+  fetchCloudModelDetails,
+  formatRelativeTime,
+  isCloudCatalogEnabled,
+} from "@/lib/catalog-cloud";
+
+export interface CatalogEntry {
+  id: string;
+  name: string;
+  description: string;
+  capabilities: string[];
+  sizes: string[];
+  pulls: string;
+  updated: string;
+  family: string | null;
+  parentModel: string | null;
+  parameterSize: string | null;
+  quantizationLevel: string | null;
+  contextLength: number | null;
+  sizeBytes: number | null;
+  url: string | null;
+}
 
 export interface ScrapedModel {
   id: string;
@@ -11,10 +36,8 @@ export interface ScrapedModel {
   updated: string;
 }
 
-export const CATALOG_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+export const CATALOG_DB_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_PAGES = 100;
-
-export let catalogCache: { data: ScrapedModel[]; timestamp: number } | null = null;
 
 const KNOWN_CAPABILITIES = ["tools", "vision", "embedding", "thinking", "cloud", "text"];
 // Parameter-count tags like "3b", "7b", "0.5b", "1m" (size badges on ollama.com cards)
@@ -86,19 +109,7 @@ async function fetchPage(url: string): Promise<string> {
   return res.text();
 }
 
-export function clearCatalogCache(): void {
-  catalogCache = null;
-}
-
-export function isCatalogCacheStale(): boolean {
-  return catalogCache ? Date.now() - catalogCache.timestamp >= CATALOG_CACHE_TTL : true;
-}
-
-export async function scrapeAllModels(forceRefresh = false): Promise<ScrapedModel[]> {
-  if (!forceRefresh && catalogCache && Date.now() - catalogCache.timestamp < CATALOG_CACHE_TTL) {
-    return catalogCache.data;
-  }
-
+export async function scrapeAllModels(): Promise<ScrapedModel[]> {
   const modelMap = new Map<string, ScrapedModel>();
 
   for (let page = 1; page <= MAX_PAGES; page++) {
@@ -124,13 +135,7 @@ export async function scrapeAllModels(forceRefresh = false): Promise<ScrapedMode
     return m.sizes.length > 0 || m.capabilities.length > 0;
   });
 
-  // Never poison the cache with an empty scrape (e.g. markup changes on
-  // ollama.com or a transient network failure). Serve the last good data;
-  // only throw when there is nothing cached to fall back on.
   if (models.length === 0) {
-    if (catalogCache && catalogCache.data.length > 0) {
-      return catalogCache.data;
-    }
     throw new Error("Catalog scrape returned no models");
   }
 
@@ -152,6 +157,173 @@ export async function scrapeAllModels(forceRefresh = false): Promise<ScrapedMode
     return parseCount(b.pulls) - parseCount(a.pulls);
   });
 
-  catalogCache = { data: models, timestamp: Date.now() };
   return models;
+}
+
+type CatalogRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  family: string | null;
+  parentModel: string | null;
+  parameterSize: string | null;
+  quantizationLevel: string | null;
+  contextLength: number | null;
+  sizeBytes: bigint | null;
+  url: string | null;
+  capabilities: string;
+  sizes: string;
+  pullCount: string | null;
+  lastUpdated: string | null;
+};
+
+function splitList(value: string): string[] {
+  return value ? value.split(",").filter(Boolean) : [];
+}
+
+function rowToEntry(row: CatalogRow): CatalogEntry {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? "",
+    capabilities: splitList(row.capabilities),
+    sizes: splitList(row.sizes),
+    pulls: row.pullCount ?? "",
+    updated: row.lastUpdated ?? "",
+    family: row.family,
+    parentModel: row.parentModel,
+    parameterSize: row.parameterSize,
+    quantizationLevel: row.quantizationLevel,
+    contextLength: row.contextLength,
+    // BigInt from the DB is not JSON-serializable; catalog sizes fit a double.
+    sizeBytes: row.sizeBytes == null ? null : Number(row.sizeBytes),
+    url: row.url,
+  };
+}
+
+function scrapedToEntry(model: ScrapedModel): CatalogEntry {
+  return {
+    id: model.id,
+    name: model.name,
+    description: model.description,
+    capabilities: model.capabilities,
+    sizes: model.sizes,
+    pulls: model.pulls,
+    updated: model.updated,
+    family: null,
+    parentModel: null,
+    parameterSize: null,
+    quantizationLevel: null,
+    contextLength: null,
+    sizeBytes: null,
+    url: catalogPageUrl(model.id),
+  };
+}
+
+export async function fetchCloudEntries(): Promise<CatalogEntry[]> {
+  const tagsModels = await fetchCloudCatalog();
+  const results: CatalogEntry[] = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < tagsModels.length) {
+      const tagsModel = tagsModels[index++];
+      const details = await fetchCloudModelDetails(tagsModel.model || tagsModel.name, tagsModel);
+      const name = tagsModel.name;
+      const tag = name.includes(":") ? name.slice(name.indexOf(":") + 1) : "latest";
+      results.push({
+        id: name,
+        name,
+        description: "",
+        capabilities: details.capabilities,
+        sizes: [tag],
+        pulls: "",
+        updated: formatRelativeTime(details.modifiedAt ?? undefined),
+        family: details.family,
+        parentModel: details.parentModel,
+        parameterSize: details.parameterSize,
+        quantizationLevel: details.quantizationLevel,
+        contextLength: details.contextLength,
+        sizeBytes: tagsModel.size || null,
+        url: catalogPageUrl(name),
+      });
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(8, Math.max(1, tagsModels.length)) }, worker)
+  );
+  return results;
+}
+
+async function fetchScrapedEntries(): Promise<CatalogEntry[]> {
+  return (await scrapeAllModels()).map(scrapedToEntry);
+}
+
+async function persistCatalog(entries: CatalogEntry[]): Promise<void> {
+  await prisma.$transaction([
+    prisma.catalogModel.deleteMany(),
+    prisma.catalogModel.createMany({
+      data: entries.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        description: entry.description || null,
+        family: entry.family,
+        parentModel: entry.parentModel,
+        parameterSize: entry.parameterSize,
+        quantizationLevel: entry.quantizationLevel,
+        contextLength: entry.contextLength,
+        sizeBytes: entry.sizeBytes == null ? null : BigInt(entry.sizeBytes),
+        url: entry.url,
+        capabilities: entry.capabilities.join(","),
+        sizes: entry.sizes.join(","),
+        pullCount: entry.pulls || null,
+        lastUpdated: entry.updated || null,
+        cachedAt: new Date(),
+      })),
+    }),
+  ]);
+}
+
+export interface CatalogResult {
+  entries: CatalogEntry[];
+  /** True when the fetch failed and rows from an older refresh are being served. */
+  stale: boolean;
+  source: "cloud" | "scrape";
+}
+
+export async function getCatalog(forceRefresh = false): Promise<CatalogResult> {
+  const rows = await prisma.catalogModel.findMany();
+  const freshest = rows.reduce(
+    (max, row) => Math.max(max, row.cachedAt?.getTime() ?? 0),
+    0
+  );
+  const fresh = rows.length > 0 && Date.now() - freshest < CATALOG_DB_TTL;
+
+  if (!forceRefresh && fresh) {
+    return { entries: rows.map(rowToEntry), stale: false, source: isCloudCatalogEnabled() ? "cloud" : "scrape" };
+  }
+
+  const useCloud = isCloudCatalogEnabled();
+  try {
+    const entries = useCloud ? await fetchCloudEntries() : await fetchScrapedEntries();
+    if (entries.length === 0) throw new Error("Catalog fetch returned no models");
+    await persistCatalog(entries);
+    return { entries, stale: false, source: useCloud ? "cloud" : "scrape" };
+  } catch (err) {
+    // Cloud fetch failed: fall back to scraping once before serving stale data.
+    if (useCloud) {
+      try {
+        const entries = await fetchScrapedEntries();
+        await persistCatalog(entries);
+        return { entries, stale: false, source: "scrape" };
+      } catch {
+        // ignore — stale DB rows may still be available below
+      }
+    }
+    if (rows.length > 0) {
+      return { entries: rows.map(rowToEntry), stale: true, source: useCloud ? "cloud" : "scrape" };
+    }
+    throw err instanceof Error ? err : new Error("Failed to fetch catalog");
+  }
 }

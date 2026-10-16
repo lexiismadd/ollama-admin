@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { listModels } from "@/lib/ollama";
+import { enrichModels } from "@/lib/model-enrichment";
 
 export async function GET(req: NextRequest) {
   const serverId = req.nextUrl.searchParams.get("serverId");
@@ -23,7 +24,12 @@ export async function GET(req: NextRequest) {
 
   try {
     const data = await listModels(server.url);
-    return NextResponse.json(data);
+    const extras = await enrichModels(server.url, data.models);
+    const models = data.models.map((model) => {
+      const extra = extras.get(model.name);
+      return { ...model, capabilities: extra?.capabilities ?? [], context_length: extra?.contextLength ?? null };
+    });
+    return NextResponse.json({ models });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to list models";
     return NextResponse.json({ error: message }, { status: 502 });

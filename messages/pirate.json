@@ -186,7 +186,12 @@
       "embedding": "Memory",
       "thinking": "The Brain",
       "code": "Secret Scrolls"
-    }
+    },
+    "family": "Clan",
+    "params": "Params",
+    "quant": "Squish",
+    "context": "Context",
+    "viewOnOllama": "Spy on ollama.com"
   },
   "admin": {
     "models": {
@@ -218,7 +223,11 @@
       "deleteSuccess": "\"{model}\" is gone to Davy Jones!",
       "deleteError": "Couldn't throw it overboard!",
       "copyCode": "Copy the scroll",
-      "copied": "Copied, arr!"
+      "copied": "Copied, arr!",
+      "params": "Params",
+      "context": "Context",
+      "parentModel": "Parent Clan",
+      "actions": "Deeds"
     },
     "servers": {
       "title": "The Fleet (Servers)",

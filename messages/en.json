@@ -186,7 +186,12 @@
       "embedding": "Embedding",
       "thinking": "Thinking",
       "code": "Code"
-    }
+    },
+    "family": "Family",
+    "params": "Params",
+    "quant": "Quant",
+    "context": "Context",
+    "viewOnOllama": "View on ollama.com"
   },
   "admin": {
     "models": {
@@ -218,7 +223,11 @@
       "deleteSuccess": "Model \"{model}\" deleted",
       "deleteError": "Error deleting model",
       "copyCode": "Copy code",
-      "copied": "Copied"
+      "copied": "Copied",
+      "params": "Params",
+      "context": "Context",
+      "parentModel": "Parent model",
+      "actions": "Actions"
     },
     "servers": {
       "title": "Servers",

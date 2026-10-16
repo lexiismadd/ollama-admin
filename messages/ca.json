@@ -188,7 +188,12 @@
       "embedding": "Embedding",
       "thinking": "Raonament",
       "code": "Codi"
-    }
+    },
+    "family": "Família",
+    "params": "Paràm.",
+    "quant": "Quant.",
+    "context": "Contexte",
+    "viewOnOllama": "Veure a ollama.com"
   },
   "admin": {
     "models": {
@@ -220,7 +225,11 @@
       "deleteSuccess": "Model \"{model}\" eliminat",
       "deleteError": "Error en eliminar el model",
       "copyCode": "Copiar codi",
-      "copied": "Copiat"
+      "copied": "Copiat",
+      "params": "Paràm.",
+      "context": "Contexte",
+      "parentModel": "Model pare",
+      "actions": "Accions"
     },
     "servers": {
       "title": "Servidors",

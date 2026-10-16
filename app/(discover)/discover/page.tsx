@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useSession } from "next-auth/react";
 import { useEffect, useState, useRef, useMemo, useCallback } from "react";
-import { Search, Check, Download, Loader2, RefreshCw } from "lucide-react";
+import { Search, Check, Download, Loader2, RefreshCw, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -20,6 +20,13 @@ interface CatalogModel {
   sizes: string[];
   pulls: string;
   updated: string;
+  family: string | null;
+  parentModel: string | null;
+  parameterSize: string | null;
+  quantizationLevel: string | null;
+  contextLength: number | null;
+  sizeBytes: number | null;
+  url: string | null;
 }
 
 interface GpuSpecs {
@@ -59,6 +66,17 @@ function vramStyle(memPct: number): React.CSSProperties {
   if (memPct >= 80)  return { color: "hsl(0 84% 60%)",    background: "hsl(0 84% 60% / 0.15)" };
   if (memPct >= 60)  return { color: "hsl(38 92% 50%)",   background: "hsl(38 92% 50% / 0.15)" };
   return               { color: "hsl(142 71% 45%)",  background: "hsl(142 71% 45% / 0.15)" };
+}
+
+function formatContextLength(length: number | null): string | null {
+  if (length == null) return null;
+  if (length >= 1024) return `${Math.round(length / 1024)}k`;
+  return `${length}`;
+}
+
+function formatSizeBytes(bytes: number): string {
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
 export default function DiscoverPage() {
@@ -394,6 +412,10 @@ export default function DiscoverPage() {
             >
               Updated <span>{sortBy === "updated" ? (sortDir === 1 ? "↓" : "↑") : <span className="opacity-30">↕</span>}</span>
             </button>
+            <span className="w-28 shrink-0 hidden lg:block">{t("family")}</span>
+            <span className="w-16 shrink-0 hidden lg:block text-right">{t("params")}</span>
+            <span className="w-20 shrink-0 hidden xl:block">{t("quant")}</span>
+            <span className="w-20 shrink-0 hidden md:block text-right">{t("context")}</span>
             <span className="w-28 shrink-0 text-right">Size</span>
             {gpuSpecs && <span className="w-24 shrink-0 text-right hidden md:block">Speed</span>}
             {gpuSpecs && (
@@ -404,6 +426,7 @@ export default function DiscoverPage() {
                 Grade <span>{sortBy === "grade" ? (sortDir === 1 ? "↓" : "↑") : <span className="opacity-30">↕</span>}</span>
               </button>
             )}
+            <span className="w-8 shrink-0" />
             <span className="w-8 shrink-0" />
           </div>
 
@@ -446,9 +469,31 @@ export default function DiscoverPage() {
                   {row.updated}
                 </span>
 
+                {/* Parent model / family */}
+                <span className="w-28 shrink-0 hidden lg:block text-xs text-[hsl(var(--muted-foreground))] truncate" title={row.parentModel || row.family || ""}>
+                  {row.parentModel || row.family || "—"}
+                </span>
+
+                {/* Parameter size */}
+                <span className="w-16 shrink-0 hidden lg:block text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+                  {row.parameterSize || "—"}
+                </span>
+
+                {/* Quantization level */}
+                <span className="w-20 shrink-0 hidden xl:block text-xs font-mono text-[hsl(var(--muted-foreground))]">
+                  {row.quantizationLevel || "—"}
+                </span>
+
+                {/* Context length */}
+                <span className="w-20 shrink-0 hidden md:block text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+                  {formatContextLength(row.contextLength) || "—"}
+                </span>
+
                 {/* GB + VRAM% */}
                 <div className="w-28 shrink-0 flex items-center justify-end gap-1.5">
-                  {gbLabel && <span className="tabular-nums">{gbLabel}</span>}
+                  {row.sizeBytes
+                    ? <span className="tabular-nums">{formatSizeBytes(row.sizeBytes)}</span>
+                    : gbLabel && <span className="tabular-nums">{gbLabel}</span>}
                   {score && gpuSpecs && (
                     <span className="rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums" style={vramStyle(score.memPct)}>
                       {Math.round(score.memPct)}%
@@ -479,6 +524,22 @@ export default function DiscoverPage() {
                     )}
                   </div>
                 )}
+
+                {/* Ollama.com link */}
+                <div className="w-8 shrink-0 flex justify-end">
+                  {row.url && (
+                    <a
+                      href={row.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`${t("viewOnOllama")} ${row.name}`}
+                      title={t("viewOnOllama")}
+                      className="rounded p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))]"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  )}
+                </div>
 
                 {/* Action */}
                 <div className="w-8 shrink-0 flex justify-end">
