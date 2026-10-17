@@ -101,7 +101,10 @@ model CatalogModel {
   quantizationLevel String?
   contextLength     Int?
   sizeBytes         BigInt?
+  sizeLabel         String?
   url               String?
+  isCloud           Boolean   @default(false)
+  isMLX             Boolean   @default(false)
   capabilities      String    @default("")
   sizes             String    @default("")
   pullCount         String?
