@@ -15,6 +15,7 @@ import { CapabilityIcons, CAP_ICONS, CAP_COLORS } from "@/components/ui/capabili
 interface CatalogModel {
   id: string;
   name: string;
+  tag: string;
   description: string;
   capabilities: string[];
   sizes: string[];
@@ -26,7 +27,10 @@ interface CatalogModel {
   quantizationLevel: string | null;
   contextLength: number | null;
   sizeBytes: number | null;
+  sizeLabel: string | null;
   url: string | null;
+  isCloud: boolean;
+  isMLX: boolean;
 }
 
 interface GpuSpecs {
@@ -37,9 +41,60 @@ interface GpuSpecs {
 
 const CAPABILITY_OPTIONS = ["text", "tools", "vision", "embedding", "thinking"];
 
+type SortKey = "model" | "updated" | "params" | "quant" | "context" | "size" | "family" | "grade";
+
+type FilterType = "all" | "local" | "cloud" | "mlx";
+
+const CTX_BUCKETS: Array<{ key: string; max: number | null }> = [
+  { key: "ctx-le8k", max: 8192 },
+  { key: "ctx-le32k", max: 32768 },
+  { key: "ctx-le128k", max: 131072 },
+  { key: "ctx-le256k", max: 262144 },
+  { key: "ctx-gt256k", max: null },
+];
+
+const CTX_BUCKET_LABELS: Record<string, string> = {
+  "ctx-le8k": "≤ 8K",
+  "ctx-le32k": "≤ 32K",
+  "ctx-le128k": "≤ 128K",
+  "ctx-le256k": "≤ 256K",
+  "ctx-gt256k": "> 256K",
+};
+
 const GRADE_LABELS: Record<Grade, string> = {
   S: "≥50 t/s", A: "≥30 t/s", B: "≥15 t/s", C: "≥8 t/s", D: "≥3 t/s", F: "no fit",
 };
+
+// Clickable column header with a direction arrow. "updated" sorts most-recent-first
+// by default (arrow ↓); every other column sorts ascending (arrow ↑).
+function SortHeader({
+  label, k, sortBy, sortDir, onClick, className, alignRight,
+}: {
+  label: string;
+  k: SortKey;
+  sortBy: SortKey;
+  sortDir: 1 | -1;
+  onClick: () => void;
+  className: string;
+  alignRight?: boolean;
+}) {
+  const active = sortBy === k;
+  const arrow = !active
+    ? <span className="opacity-30">↕</span>
+    : sortDir === (k === "updated" ? 1 : -1)
+      ? <span>{k === "updated" ? "↓" : "↑"}</span>
+      : <span>{k === "updated" ? "↑" : "↓"}</span>;
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className={`shrink-0 flex items-center gap-0.5 transition-colors hover:text-[hsl(var(--foreground))] ${active ? "text-[hsl(var(--foreground))]" : "text-[hsl(var(--muted-foreground))]"
+        } ${alignRight ? "justify-end" : ""} ${className}`}
+    >
+      {label} {arrow}
+    </button>
+  );
+}
 
 
 // Estimate model size in GB from a tag like "7b", "13b", "70b" using Q4 approximation.
@@ -79,6 +134,40 @@ function formatSizeBytes(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
+// Parse "32.7B" / "756.2B" style parameter labels into billions for sorting.
+function parseParamB(label: string | null): number | null {
+  if (!label) return null;
+  const m = label.match(/^(\d+(?:\.\d+)?)([BMK])$/i);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  switch (m[2].toUpperCase()) {
+    case "K": return n / 1000;
+    case "B": return n;
+    case "M": return n / 1000;
+    default: return n;
+  }
+}
+
+// Best-effort row size in GB: exact sizeBytes when known, else the Q4 tag estimate.
+function rowSizeGB(row: CatalogModel): number | null {
+  if (row.sizeBytes) return row.sizeBytes / 1024 ** 3;
+  return parseTagToSizeGB(row.tag);
+}
+
+function cmpNullable<T>(a: T | null, b: T | null, cmp: (x: T, y: T) => number): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1; // nulls sort last regardless of direction
+  if (b == null) return -1;
+  return cmp(a, b);
+}
+
+function ctxMatches(length: number | null, bucketKey: string): boolean {
+  const bucket = CTX_BUCKETS.find((b) => b.key === bucketKey);
+  if (!bucket || length == null) return bucket == null;
+  if (bucket.max == null) return length > 262144;
+  return length <= bucket.max;
+}
+
 export default function DiscoverPage() {
   const t = useTranslations("discover");
   const { data: session } = useSession();
@@ -94,8 +183,13 @@ export default function DiscoverPage() {
   const [downloadingRefs, setDownloadingRefs] = useState<Set<string>>(new Set());
   const [gpuSpecs, setGpuSpecs] = useState<GpuSpecs | null>(null);
   const [fitsGpuOnly, setFitsGpuOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<"updated" | "grade">("updated");
+  const [sortBy, setSortBy] = useState<SortKey>("updated");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
+  const [filterType, setFilterType] = useState<FilterType>("all");
+  const [quantFilter, setQuantFilter] = useState("all");
+  const [ctxFilter, setCtxFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -270,40 +364,88 @@ export default function DiscoverPage() {
     return scoreModel(sizeGB, gpuSpecs.vramGB, gpuSpecs.bandwidthGBs ?? undefined);
   };
 
-  // Flatten models × sizes into individual rows; apply GPU filter and sort by grade.
-  const flatRows = useMemo(() => {
+  // Rows arrive granular (one per model tag variant); apply type/quant/context/GPU
+  // filters, then sort. Null metadata always sorts last.
+  const filteredRows = useMemo(() => {
     const GRADE_ORDER: Record<string, number> = { S: 0, A: 1, B: 2, C: 3, D: 4, F: 5 };
 
-    const rows = models.flatMap((model) => {
-      const sizes = model.sizes.length > 0 ? model.sizes : ["latest"];
-      const all = sizes.map((size) => ({ ...model, size }));
+    const rows = models.filter((row) => {
+      if (filterType === "cloud" && !row.isCloud) return false;
+      if (filterType === "mlx" && !row.isMLX) return false;
+      if (filterType === "local" && (row.isCloud || row.isMLX)) return false;
+      if (quantFilter !== "all" && (row.quantizationLevel ?? "") !== quantFilter) return false;
+      if (ctxFilter !== "all" && !ctxMatches(row.contextLength, ctxFilter)) return false;
       if (fitsGpuOnly && gpuSpecs) {
-        return all.filter(({ size }) => {
-          const sizeGB = parseTagToSizeGB(size);
-          return sizeGB === null || sizeGB <= gpuSpecs.vramGB;
-        });
+        const sizeGB = rowSizeGB(row);
+        if (sizeGB !== null && sizeGB > gpuSpecs.vramGB) return false;
       }
-      return all;
+      return true;
     });
 
-    return [...rows].sort((a, b) => {
-      if (sortBy === "grade" && gpuSpecs) {
-        const scoreA = getTagScore(a.size);
-        const scoreB = getTagScore(b.size);
-        const gradeA = scoreA ? GRADE_ORDER[scoreA.grade] ?? 6 : 6;
-        const gradeB = scoreB ? GRADE_ORDER[scoreB.grade] ?? 6 : 6;
-        if (gradeA !== gradeB) return (gradeA - gradeB) * sortDir;
-        return ((scoreB?.tps ?? 0) - (scoreA?.tps ?? 0)) * sortDir;
+    const cmp = (a: CatalogModel, b: CatalogModel): number => {
+      switch (sortBy) {
+        case "model":
+          return a.id.localeCompare(b.id);
+        case "params":
+          return cmpNullable(parseParamB(a.parameterSize), parseParamB(b.parameterSize), (x, y) => x - y);
+        case "quant":
+          return cmpNullable(a.quantizationLevel, b.quantizationLevel, (x, y) => x.localeCompare(y));
+        case "context":
+          return cmpNullable(a.contextLength, b.contextLength, (x, y) => x - y);
+        case "size":
+          return cmpNullable(rowSizeGB(a), rowSizeGB(b), (x, y) => x - y);
+        case "family":
+          return cmpNullable(a.family ?? a.parentModel, b.family ?? b.parentModel, (x, y) => x.localeCompare(y));
+        case "grade": {
+          if (!gpuSpecs) return 0;
+          const scoreA = getTagScore(a.tag);
+          const scoreB = getTagScore(b.tag);
+          const ga = scoreA ? GRADE_ORDER[scoreA.grade] ?? 6 : 6;
+          const gb = scoreB ? GRADE_ORDER[scoreB.grade] ?? 6 : 6;
+          if (ga !== gb) return ga - gb;
+          return (scoreB?.tps ?? 0) - (scoreA?.tps ?? 0);
+        }
+        case "updated":
+        default:
+          return parseRelativeTime(b.updated) - parseRelativeTime(a.updated);
       }
-      // Default: sort by updated (most recent first)
-      return (parseRelativeTime(b.updated) - parseRelativeTime(a.updated)) * sortDir;
-    });
+    };
+
+    return [...rows].sort((a, b) => cmp(a, b) * sortDir);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, fitsGpuOnly, gpuSpecs, sortBy, sortDir]);
+  }, [models, filterType, quantFilter, ctxFilter, fitsGpuOnly, gpuSpecs, sortBy, sortDir]);
+
+  // Reset to the first page whenever the row set changes.
+  useEffect(() => {
+    setPage(1);
+  }, [filterType, quantFilter, ctxFilter, sortBy, sortDir, pageSize, search, selectedCaps]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = useMemo(
+    () => filteredRows.slice((safePage - 1) * pageSize, safePage * pageSize),
+    [filteredRows, safePage, pageSize]
+  );
+
+  const quantOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(models.map((m) => m.quantizationLevel).filter((q): q is string => Boolean(q)))
+      ).sort(),
+    [models]
+  );
 
   const gpuLabel = gpuSpecs
     ? `${gpuSpecs.gpuName.replace(/NVIDIA GeForce /i, "").replace(/NVIDIA /i, "")} · ${Math.round(gpuSpecs.vramGB)}GB`
     : null;
+
+  const handleSort = (k: SortKey) => {
+    if (sortBy === k) setSortDir((d) => (d === 1 ? -1 : 1));
+    else {
+      setSortBy(k);
+      setSortDir(1);
+    }
+  };
 
   return (
     <div className="p-6">
@@ -372,6 +514,48 @@ export default function DiscoverPage() {
         )}
       </div>
 
+      {/* Type filter (Local / Cloud / MLX) + quant + context dropdowns */}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-2" role="group" aria-label={t("filterType")}>
+          {(["all", "local", "cloud", "mlx"] as FilterType[]).map((ft) => (
+            <button
+              key={ft}
+              onClick={() => setFilterType(ft)}
+              aria-pressed={filterType === ft}
+              className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+                filterType === ft
+                  ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                  : "border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))]"
+              }`}
+            >
+              {t(`type_${ft}`)}
+            </button>
+          ))}
+        </div>
+        <Select
+          value={quantFilter}
+          onChange={(e) => setQuantFilter(e.target.value)}
+          className="w-36"
+          aria-label={t("quant")}
+        >
+          <option value="all">{t("allQuants")}</option>
+          {quantOptions.map((q) => (
+            <option key={q} value={q}>{q}</option>
+          ))}
+        </Select>
+        <Select
+          value={ctxFilter}
+          onChange={(e) => setCtxFilter(e.target.value)}
+          className="w-36"
+          aria-label={t("context")}
+        >
+          <option value="all">{t("allContexts")}</option>
+          {CTX_BUCKETS.map((b) => (
+            <option key={b.key} value={b.key}>{CTX_BUCKET_LABELS[b.key]}</option>
+          ))}
+        </Select>
+      </div>
+
       {/* GPU grade legend */}
       {gpuSpecs && (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.4)] px-3 py-2 text-xs text-[hsl(var(--muted-foreground))]">
@@ -399,47 +583,39 @@ export default function DiscoverPage() {
             </div>
           ))}
         </div>
-      ) : flatRows.length === 0 ? (
+      ) : filteredRows.length === 0 ? (
         <EmptyState icon={Search} title={t("emptyTitle")} description={t("emptyDescription")} />
       ) : (
         <div className="mt-4 overflow-hidden rounded-lg border border-[hsl(var(--border))]">
           {/* Column headers */}
-          <div className="flex items-center gap-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.6)] px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
-            <span className="flex-1">Model</span>
-            <button
-              onClick={() => { setSortBy("updated"); setSortDir(sortBy === "updated" ? (sortDir === 1 ? -1 : 1) : 1); }}
-              className={`w-24 shrink-0 hidden sm:flex items-center justify-end gap-0.5 hover:text-[hsl(var(--foreground))] transition-colors ${sortBy === "updated" ? "text-[hsl(var(--foreground))]" : ""}`}
-            >
-              Updated <span>{sortBy === "updated" ? (sortDir === 1 ? "↓" : "↑") : <span className="opacity-30">↕</span>}</span>
-            </button>
-            <span className="w-28 shrink-0 hidden lg:block">{t("family")}</span>
-            <span className="w-16 shrink-0 hidden lg:block text-right">{t("params")}</span>
-            <span className="w-20 shrink-0 hidden xl:block">{t("quant")}</span>
-            <span className="w-20 shrink-0 hidden md:block text-right">{t("context")}</span>
-            <span className="w-28 shrink-0 text-right">Size</span>
-            {gpuSpecs && <span className="w-24 shrink-0 text-right hidden md:block">Speed</span>}
+          <div className="flex items-center gap-4 border-b border-[hsl(var(--border))] bg-[hsl(var(--muted)/0.4)] px-4 py-2 text-[11px] font-medium uppercase tracking-wide text-[hsl(var(--muted-foreground))]">
+            <SortHeader label={t("model")} k="model" sortBy={sortBy} sortDir={sortDir} onClick={() => handleSort("model")} className="flex-1" />
+            <SortHeader label={t("lastUpdated")} k="updated" sortBy={sortBy} sortDir={sortDir} onClick={() => handleSort("updated")} className="w-24 hidden sm:flex" alignRight />
+            <SortHeader label={t("family")} k="family" sortBy={sortBy} sortDir={sortDir} onClick={() => handleSort("family")} className="w-28 hidden lg:flex" />
+            <SortHeader label={t("params")} k="params" sortBy={sortBy} sortDir={sortDir} onClick={() => handleSort("params")} className="w-16 hidden lg:flex" alignRight />
+            <SortHeader label={t("quant")} k="quant" sortBy={sortBy} sortDir={sortDir} onClick={() => handleSort("quant")} className="w-20 hidden xl:flex" />
+            <SortHeader label={t("context")} k="context" sortBy={sortBy} sortDir={sortDir} onClick={() => handleSort("context")} className="w-20 hidden md:flex" alignRight />
+            <SortHeader label={t("size")} k="size" sortBy={sortBy} sortDir={sortDir} onClick={() => handleSort("size")} className="w-28" alignRight />
+            {gpuSpecs && <span className="w-24 shrink-0 text-right hidden md:block">{t("speed")}</span>}
             {gpuSpecs && (
-              <button
-                onClick={() => { setSortBy("grade"); setSortDir(sortBy === "grade" ? (sortDir === 1 ? -1 : 1) : 1); }}
-                className={`w-16 shrink-0 text-center whitespace-nowrap hover:text-[hsl(var(--foreground))] transition-colors ${sortBy === "grade" ? "text-[hsl(var(--foreground))]" : ""}`}
-              >
-                Grade <span>{sortBy === "grade" ? (sortDir === 1 ? "↓" : "↑") : <span className="opacity-30">↕</span>}</span>
-              </button>
+              <SortHeader label={t("grade")} k="grade" sortBy={sortBy} sortDir={sortDir} onClick={() => handleSort("grade")} className="w-16 justify-center" />
             )}
             <span className="w-8 shrink-0" />
             <span className="w-8 shrink-0" />
           </div>
 
-          {flatRows.map((row, idx) => {
-            const downloaded = isModelTagDownloaded(row.name, row.size);
-            const pulling = isDownloading(row.name, row.size);
-            const score = getTagScore(row.size);
-            const sizeGB = parseTagToSizeGB(row.size);
+          {pageRows.map((row, idx) => {
+            const baseName = row.id.includes(":") ? row.id.slice(0, row.id.indexOf(":")) : row.id;
+            const downloaded = isModelTagDownloaded(baseName, row.tag);
+            const pulling = isDownloading(baseName, row.tag);
+            const score = getTagScore(row.tag);
+            const sizeGB = rowSizeGB(row);
             const gbLabel = sizeGB != null
               ? sizeGB < 10 ? `${sizeGB.toFixed(1)} GB` : `${Math.round(sizeGB)} GB`
               : null;
+            const sizeText = row.sizeLabel || (row.sizeBytes ? formatSizeBytes(row.sizeBytes) : gbLabel || "—");
             const noFit = score && !score.fits;
-            const isLast = idx === flatRows.length - 1;
+            const isLast = idx === pageRows.length - 1;
 
             const rowInner = (
               <div className={[
@@ -447,13 +623,29 @@ export default function DiscoverPage() {
                 noFit ? "opacity-40" : "",
                 !isLast ? "border-b border-[hsl(var(--border))]" : "",
               ].join(" ")}>
-                {/* Name + size tag + capability icons */}
+                {/* Name + variant tag + type badges + capability icons */}
                 <div className="min-w-0 flex-1 flex items-center gap-3">
                   <div className="min-w-0 flex items-center gap-2 flex-wrap">
                     <span className="font-semibold truncate">{row.name}</span>
                     <span className="shrink-0 rounded bg-[hsl(var(--muted))] px-1.5 py-0.5 font-mono text-[11px] text-[hsl(var(--muted-foreground))]">
-                      {row.size}
+                      :{row.tag}
                     </span>
+                    {row.isCloud && (
+                      <span
+                        title={t("cloudBadge")}
+                        className="shrink-0 rounded-full border border-[hsl(217 91% 60%)] px-1.5 py-px text-[10px] font-medium text-[hsl(217 91% 60%)]"
+                      >
+                        {t("cloudBadge")}
+                      </span>
+                    )}
+                    {row.isMLX && (
+                      <span
+                        title={t("mlxBadge")}
+                        className="shrink-0 rounded-full border border-[hsl(262 83% 58%)] px-1.5 py-px text-[10px] font-medium text-[hsl(262 83% 58%)]"
+                      >
+                        {t("mlxBadge")}
+                      </span>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     {row.capabilities.map((cap) => (
@@ -489,11 +681,9 @@ export default function DiscoverPage() {
                   {formatContextLength(row.contextLength) || "—"}
                 </span>
 
-                {/* GB + VRAM% */}
-                <div className="w-28 shrink-0 flex items-center justify-end gap-1.5">
-                  {row.sizeBytes
-                    ? <span className="tabular-nums">{formatSizeBytes(row.sizeBytes)}</span>
-                    : gbLabel && <span className="tabular-nums">{gbLabel}</span>}
+                {/* Download size (per-variant when known) + VRAM% */}
+                <div className="w-28 shrink-0 flex items-center justify-end gap-1.5" title={row.sizeLabel ?? undefined}>
+                  <span className="tabular-nums truncate max-w-24">{sizeText}</span>
                   {score && gpuSpecs && (
                     <span className="rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums" style={vramStyle(score.memPct)}>
                       {Math.round(score.memPct)}%
@@ -549,9 +739,9 @@ export default function DiscoverPage() {
                     <Loader2 className="h-4 w-4 animate-spin text-[hsl(var(--muted-foreground))]" />
                   ) : isAdmin ? (
                     <button
-                      onClick={() => handlePull(row.name, row.size !== "latest" ? row.size : undefined)}
+                      onClick={() => handlePull(baseName, row.tag !== "latest" ? row.tag : undefined)}
                       disabled={!selectedServer}
-                      aria-label={`${t("pullModel")} ${row.name}:${row.size}`}
+                      aria-label={`${t("pullModel")} ${baseName}:${row.tag}`}
                       className="rounded p-1 text-[hsl(var(--muted-foreground))] transition-colors hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] disabled:opacity-50"
                     >
                       <Download className="h-4 w-4" />
@@ -561,8 +751,48 @@ export default function DiscoverPage() {
               </div>
             );
 
-            return <div key={`${row.id}-${row.size}`}>{rowInner}</div>;
+            return <div key={row.id}>{rowInner}</div>;
           })}
+
+          {/* Pagination footer */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[hsl(var(--border))] px-4 py-2 text-xs text-[hsl(var(--muted-foreground))]">
+            <span>
+              {t("showing", {
+                from: (safePage - 1) * pageSize + 1,
+                to: Math.min(safePage * pageSize, filteredRows.length),
+                total: filteredRows.length,
+              })}
+            </span>
+            <div className="flex items-center gap-2">
+              <Select
+                value={String(pageSize)}
+                onChange={(e) => setPageSize(Number(e.target.value))}
+                className="w-auto"
+                aria-label={t("pageSizeLabel")}
+              >
+                {[25, 50, 100].map((n) => (
+                  <option key={n} value={n}>{t("pageSizeOption", { n })}</option>
+                ))}
+              </Select>
+              <button
+                onClick={() => setPage(Math.max(1, safePage - 1))}
+                disabled={safePage <= 1}
+                aria-label={t("prevPage")}
+                className="rounded border border-[hsl(var(--border))] px-2 py-1 transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-40"
+              >
+                ‹
+              </button>
+              <span className="tabular-nums">{t("pageOf", { page: safePage, total: totalPages })}</span>
+              <button
+                onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+                disabled={safePage >= totalPages}
+                aria-label={t("nextPage")}
+                className="rounded border border-[hsl(var(--border))] px-2 py-1 transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-40"
+              >
+                ›
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
