@@ -191,7 +191,26 @@
     "params": "Params",
     "quant": "Squish",
     "context": "Context",
-    "viewOnOllama": "See on ollama.com"
+    "viewOnOllama": "See on ollama.com",
+    "model": "Model",
+    "size": "Size",
+    "speed": "Speed",
+    "grade": "Grade",
+    "filterType": "Type",
+    "type_all": "All",
+    "type_local": "Ship's Own",
+    "type_cloud": "Sky Island",
+    "type_mlx": "MLX",
+    "allQuants": "All Squish",
+    "allContexts": "All Memory",
+    "cloudBadge": "Sky",
+    "mlxBadge": "MLX",
+    "showing": "Showin' {from}–{to} of {total}",
+    "pageSizeLabel": "Rows per page",
+    "pageSizeOption": "{n} / page",
+    "pageOf": "Page {page} of {total}",
+    "prevPage": "Back a page",
+    "nextPage": "Next page"
   },
   "admin": {
     "models": {

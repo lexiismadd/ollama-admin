@@ -193,7 +193,26 @@
     "params": "Params",
     "quant": "Quant.",
     "context": "Contexte",
-    "viewOnOllama": "Voir sur ollama.com"
+    "viewOnOllama": "Voir sur ollama.com",
+    "model": "Modèle",
+    "size": "Taille",
+    "speed": "Vitesse",
+    "grade": "Note",
+    "filterType": "Type",
+    "type_all": "Tous",
+    "type_local": "Local",
+    "type_cloud": "Cloud",
+    "type_mlx": "MLX",
+    "allQuants": "Toutes les quantifications",
+    "allContexts": "Tous les contextes",
+    "cloudBadge": "Cloud",
+    "mlxBadge": "MLX",
+    "showing": "Affichage de {from}–{to} sur {total}",
+    "pageSizeLabel": "Lignes par page",
+    "pageSizeOption": "{n} / page",
+    "pageOf": "Page {page} sur {total}",
+    "prevPage": "Page précédente",
+    "nextPage": "Page suivante"
   },
   "admin": {
     "models": {

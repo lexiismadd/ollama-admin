@@ -191,7 +191,26 @@
     "params": "参数",
     "quant": "量化",
     "context": "上下文",
-    "viewOnOllama": "在 ollama.com 查看"
+    "viewOnOllama": "在 ollama.com 查看",
+    "model": "模型",
+    "size": "大小",
+    "speed": "速度",
+    "grade": "评级",
+    "filterType": "类型",
+    "type_all": "全部",
+    "type_local": "本地",
+    "type_cloud": "云端",
+    "type_mlx": "MLX",
+    "allQuants": "所有量化",
+    "allContexts": "所有上下文",
+    "cloudBadge": "云端",
+    "mlxBadge": "MLX",
+    "showing": "显示 {from}–{to}，共 {total} 条",
+    "pageSizeLabel": "每页行数",
+    "pageSizeOption": "{n} / 页",
+    "pageOf": "第 {page} 页，共 {total} 页",
+    "prevPage": "上一页",
+    "nextPage": "下一页"
   },
   "admin": {
     "models": {

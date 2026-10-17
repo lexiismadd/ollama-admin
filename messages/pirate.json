@@ -191,7 +191,26 @@
     "params": "Params",
     "quant": "Squish",
     "context": "Context",
-    "viewOnOllama": "Spy on ollama.com"
+    "viewOnOllama": "Spy on ollama.com",
+    "model": "Model",
+    "size": "Size",
+    "speed": "Speed",
+    "grade": "Grade",
+    "filterType": "Type",
+    "type_all": "All",
+    "type_local": "Aboard",
+    "type_cloud": "Crow's Nest",
+    "type_mlx": "MLX",
+    "allQuants": "All Squished",
+    "allContexts": "All Recall",
+    "cloudBadge": "Cloud",
+    "mlxBadge": "MLX",
+    "showing": "Showin' {from}–{to} of {total}",
+    "pageSizeLabel": "Rows per page",
+    "pageSizeOption": "{n} / page",
+    "pageOf": "Page {page} of {total}",
+    "prevPage": "Previous page",
+    "nextPage": "Next page"
   },
   "admin": {
     "models": {
