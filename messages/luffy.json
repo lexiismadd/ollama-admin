@@ -243,6 +243,7 @@
       "deleteError": "Couldn't remove it!",
       "copyCode": "Copy code",
       "copied": "Copied!",
+      "capabilities": "Skills",
       "params": "Params",
       "context": "Context",
       "parentModel": "Parent Crew",

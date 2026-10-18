@@ -243,7 +243,8 @@
       "deleteError": "मॉडल हटाने में त्रुटि",
       "copyCode": "कोड कॉपी करें",
       "copied": "कॉपी हो गया",
-      "params": "पैरामी.",
+      "capabilities": "क्षमताएँ",
+      "params": "पैरामीटर",
       "context": "संदर्भ",
       "parentModel": "पैरेंट मॉडल",
       "actions": "क्रियाएँ"

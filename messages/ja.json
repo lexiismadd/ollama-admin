@@ -243,6 +243,7 @@
       "deleteError": "モデルの削除エラー",
       "copyCode": "コードをコピー",
       "copied": "コピーしました",
+      "capabilities": "機能",
       "params": "パラメータ",
       "context": "コンテキスト",
       "parentModel": "親モデル",

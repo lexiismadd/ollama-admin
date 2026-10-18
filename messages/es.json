@@ -243,7 +243,8 @@
       "deleteError": "Error al eliminar modelo",
       "copyCode": "Copiar código",
       "copied": "Copiado",
-      "params": "Param.",
+      "capabilities": "Capacidades",
+      "params": "Parámetros",
       "context": "Contexto",
       "parentModel": "Modelo padre",
       "actions": "Acciones"

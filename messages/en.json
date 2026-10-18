@@ -243,6 +243,7 @@
       "deleteError": "Error deleting model",
       "copyCode": "Copy code",
       "copied": "Copied",
+      "capabilities": "Capabilities",
       "params": "Params",
       "context": "Context",
       "parentModel": "Parent model",

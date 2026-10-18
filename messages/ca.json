@@ -245,7 +245,8 @@
       "deleteError": "Error en eliminar el model",
       "copyCode": "Copiar codi",
       "copied": "Copiat",
-      "params": "Paràm.",
+      "capabilities": "Capacitats",
+      "params": "Paràmetres",
       "context": "Contexte",
       "parentModel": "Model pare",
       "actions": "Accions"

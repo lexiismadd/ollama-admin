@@ -245,7 +245,8 @@
       "deleteError": "Erreur lors de la suppression du modèle",
       "copyCode": "Copier le code",
       "copied": "Copié",
-      "params": "Params",
+      "capabilities": "Capacités",
+      "params": "Paramètres",
       "context": "Contexte",
       "parentModel": "Modèle parent",
       "actions": "Actions"

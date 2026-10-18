@@ -243,6 +243,7 @@
       "deleteError": "Couldn't throw it overboard!",
       "copyCode": "Copy the scroll",
       "copied": "Copied, arr!",
+      "capabilities": "Skills",
       "params": "Params",
       "context": "Context",
       "parentModel": "Parent Clan",
