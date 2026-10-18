@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useEffect, useState, useCallback } from "react";
 import type { OllamaModel, OllamaRunningModel, OllamaShowResponse } from "@/lib/ollama";
-import { Package, Search, Cpu, Eye, Trash2, AlertTriangle, Upload } from "lucide-react";
+import { Package, Search, Cpu, Eye, Trash2, AlertTriangle, Upload, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -227,6 +227,17 @@ export default function ModelsPage() {
                 {/* Name + capabilities + running badge */}
                 <div className="min-w-0 flex-1 flex items-center gap-2">
                   <span className="font-semibold truncate" title={model.name}>{model.name}</span>
+                  {model.url && (
+                    <a
+                      href={model.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex shrink-0 items-center gap-1 text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+                      title="Ollama.com"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  )}
                   {model.capabilities && (
                     <span className="flex shrink-0 items-center gap-1">
                       <CapabilityIcons capabilities={model.capabilities} />

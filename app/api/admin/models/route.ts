@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     const extras = await enrichModels(server.url, data.models);
     const models = data.models.map((model) => {
       const extra = extras.get(model.name);
-      return { ...model, capabilities: extra?.capabilities ?? [], context_length: extra?.contextLength ?? null };
+      return { ...model, capabilities: extra?.capabilities ?? [], context_length: extra?.contextLength ?? null, url: extra?.url ?? null };
     });
     return NextResponse.json({ models });
   } catch (err) {
