@@ -191,7 +191,26 @@
     "params": "Param.",
     "quant": "Cuant.",
     "context": "Contexto",
-    "viewOnOllama": "Ver en ollama.com"
+    "viewOnOllama": "Ver en ollama.com",
+    "model": "Modelo",
+    "size": "Tamaño",
+    "speed": "Velocidad",
+    "grade": "Nota",
+    "filterType": "Tipo",
+    "type_all": "Todos",
+    "type_local": "Local",
+    "type_cloud": "Nube",
+    "type_mlx": "MLX",
+    "allQuants": "Todas las cuantizaciones",
+    "allContexts": "Todos los contextos",
+    "cloudBadge": "Nube",
+    "mlxBadge": "MLX",
+    "showing": "Mostrando {from}–{to} de {total}",
+    "pageSizeLabel": "Filas por página",
+    "pageSizeOption": "{n} / página",
+    "pageOf": "Página {page} de {total}",
+    "prevPage": "Página anterior",
+    "nextPage": "Página siguiente"
   },
   "admin": {
     "models": {
@@ -224,7 +243,8 @@
       "deleteError": "Error al eliminar modelo",
       "copyCode": "Copiar código",
       "copied": "Copiado",
-      "params": "Param.",
+      "capabilities": "Capacidades",
+      "params": "Parámetros",
       "context": "Contexto",
       "parentModel": "Modelo padre",
       "actions": "Acciones"

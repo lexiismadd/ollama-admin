@@ -3,17 +3,22 @@ import { ProxyAgent, } from "undici";
 import { prisma } from "@/lib/prisma";
 import {
   catalogPageUrl,
+  formatRelativeTime,
+} from "@/lib/catalog-cloud";
+import {
   fetchCloudCatalog,
   fetchCloudModelDetails,
-  formatRelativeTime,
   isCloudCatalogEnabled,
-} from "@/lib/catalog-cloud";
+} from "@/lib/catalog-cloud-server";
 
 export interface CatalogEntry {
   id: string;
   name: string;
+  /** Variant tag without the model prefix (e.g. "e2b-mlx"); "latest" when untagged. */
+  tag: string;
   description: string;
   capabilities: string[];
+  /** Legacy: parameter-size tags from the search card ("7b", "e2b"). Empty for granular rows. */
   sizes: string[];
   pulls: string;
   updated: string;
@@ -23,7 +28,11 @@ export interface CatalogEntry {
   quantizationLevel: string | null;
   contextLength: number | null;
   sizeBytes: number | null;
+  /** Raw size string from ollama.com ("4.6GB - 7.5GB") shown when present. */
+  sizeLabel: string | null;
   url: string | null;
+  isCloud: boolean;
+  isMLX: boolean;
 }
 
 export interface ScrapedModel {
@@ -38,6 +47,8 @@ export interface ScrapedModel {
 
 export const CATALOG_DB_TTL = 24 * 60 * 60 * 1000; // 24 hours
 const MAX_PAGES = 100;
+const TAGS_CONCURRENCY = 8;
+const TAGS_TIMEOUT_MS = 10_000;
 
 const KNOWN_CAPABILITIES = ["tools", "vision", "embedding", "thinking", "cloud", "text"];
 // Parameter-count tags like "3b", "7b", "0.5b", "1m" (size badges on ollama.com cards)
@@ -131,7 +142,6 @@ export async function scrapeAllModels(): Promise<ScrapedModel[]> {
   }
 
   const models = Array.from(modelMap.values()).filter((m) => {
-    if (m.capabilities.length === 1 && m.capabilities[0] === "cloud") return false;
     return m.sizes.length > 0 || m.capabilities.length > 0;
   });
 
@@ -140,7 +150,6 @@ export async function scrapeAllModels(): Promise<ScrapedModel[]> {
   }
 
   for (const model of models) {
-    model.capabilities = model.capabilities.filter((c) => c !== "cloud");
     if (!model.capabilities.includes("embedding")) {
       model.capabilities.unshift("text");
     }
@@ -160,6 +169,177 @@ export async function scrapeAllModels(): Promise<ScrapedModel[]> {
   return models;
 }
 
+/** One granular catalog row: a single (model, tag) variant. */
+export interface TagRow {
+  tag: string;
+  sizeBytes: number | null;
+  sizeLabel: string | null;
+  contextLength: number | null;
+  capabilities: string[];
+  isMLX: boolean;
+  updated: string;
+}
+
+function parseSize(text: string): { bytes: number | null; label: string | null } {
+  const m = text.match(/(\d+(?:\.\d+)?)(GB|MB)(?:\s*-\s*(\d+(?:\.\d+)?)(GB|MB))?/);
+  if (!m) return { bytes: null, label: null };
+  const unit = (u: string, v: string) => parseFloat(v) * (u === "GB" ? 1024 ** 3 : 1024 ** 2);
+  const first = unit(m[2], m[1]);
+  const second = m[3] !== undefined ? unit(m[4], m[3]) : null;
+  return {
+    bytes: second !== null ? Math.max(first, second) : first,
+    label: m[0],
+  };
+}
+
+function parseContext(text: string): number | null {
+  const m = text.match(/(\d+(?:\.\d+)?)(K|M|B)?\s*context window/i);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  const mult = m[2]?.toUpperCase() === "M" ? 1024 ** 2 : m[2]?.toUpperCase() === "B" ? 1024 ** 3 : 1024;
+  return Math.round(n * mult);
+}
+
+/** Capability tokens rendered on tag rows ("Text, Image input", "Tools", ...). */
+const TAG_CAP_TOKENS: Array<[RegExp, string]> = [
+  [/image input/i, "vision"],
+  [/\btext\b/i, "text"],
+  [/\btools\b/i, "tools"],
+  [/\bthinking\b/i, "thinking"],
+  [/\bembedding\b/i, "embedding"],
+];
+
+export function parseTagRows(html: string): TagRow[] {
+  const $ = cheerio.load(html);
+  const rows = new Map<string, TagRow>();
+
+  // Each variant renders twice (mobile + desktop blocks) inside a div.group.
+  $("div.group").each((_, el) => {
+    const anchor = $(el).find('a[href^="/library/"]').first();
+    const href = anchor.attr("href") || "";
+    const ref = href.replace("/library/", "");
+    if (!ref || !ref.includes(":")) return;
+
+    const text = $(el).text();
+    const tag = ref.slice(ref.indexOf(":") + 1);
+
+    // Skip the parameter-size "showing tags for" chips — they duplicate tag names
+    // without a digest/size/context metadata line.
+    if (!/\bcontext window\b/i.test(text)) return;
+
+    const size = parseSize(text);
+    const capabilities: string[] = [];
+    for (const [re, cap] of TAG_CAP_TOKENS) {
+      if (re.test(text) && !capabilities.includes(cap)) capabilities.push(cap);
+    }
+
+    const agoMatch = text.match(/(\d+\s+(?:second|minute|hour|day|week|month|year)s?\s+ago)/i);
+
+    rows.set(ref, {
+      tag,
+      sizeBytes: size.bytes,
+      sizeLabel: size.label,
+      contextLength: parseContext(text),
+      capabilities: capabilities.length > 0 ? capabilities : ["text"],
+      isMLX: /(^|\s)MLX(\s|$)/.test(text) || /-mlx/.test(tag),
+      updated: agoMatch ? agoMatch[1] : "",
+    });
+  });
+
+  return Array.from(rows.values());
+}
+
+/** Scrape the per-variant tag rows of a library model's tags page. */
+async function scrapeModelTags(modelId: string): Promise<TagRow[]> {
+  const dispatcher = getProxyDispatcher();
+  const options: RequestInit & { dispatcher?: ProxyAgent } = {
+    headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+    signal: AbortSignal.timeout(TAGS_TIMEOUT_MS),
+  };
+  if (dispatcher) options.dispatcher = dispatcher;
+  const res = await fetch(`https://ollama.com/library/${modelId}/tags`, options);
+  if (!res.ok) throw new Error(`Failed to fetch tags for ${modelId}: ${res.status}`);
+  return parseTagRows(await res.text());
+}
+
+/** Fallback row for a model whose tags page could not be scraped. */
+function fallbackTagRows(model: ScrapedModel): TagRow[] {
+  const sizes = model.sizes.length > 0 ? model.sizes : ["latest"];
+  return sizes.map((tag) => ({
+    tag,
+    sizeBytes: null,
+    sizeLabel: null,
+    contextLength: null,
+    capabilities: model.capabilities,
+    isMLX: false,
+    updated: model.updated,
+  }));
+}
+
+function cardEntry(model: ScrapedModel): CatalogEntry {
+  return {
+    id: model.id,
+    name: model.name,
+    tag: model.id.includes(":") ? model.id.slice(model.id.indexOf(":") + 1) : "latest",
+    description: model.description,
+    capabilities: model.capabilities.filter((c) => c !== "cloud"),
+    sizes: model.sizes,
+    pulls: model.pulls,
+    updated: model.updated,
+    family: null,
+    parentModel: null,
+    parameterSize: null,
+    quantizationLevel: null,
+    contextLength: null,
+    sizeBytes: null,
+    sizeLabel: null,
+    url: catalogPageUrl(model.id),
+    isCloud: model.capabilities.includes("cloud") || model.id.endsWith(":cloud"),
+    isMLX: false,
+  };
+}
+
+/** Build granular per-variant entries from the search cards + per-model tags pages. */
+export async function scrapeCatalogGranular(): Promise<CatalogEntry[]> {
+  const cards = await scrapeAllModels();
+  const entries: CatalogEntry[] = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < cards.length) {
+      const card = cards[index++];
+      const modelId = card.id.includes(":") ? card.id.slice(0, card.id.indexOf(":")) : card.id;
+      let tagRows: TagRow[];
+      try {
+        tagRows = await scrapeModelTags(modelId);
+      } catch {
+        tagRows = fallbackTagRows(card);
+      }
+
+      for (const row of tagRows) {
+        const entry = cardEntry(card);
+        entry.id = `${modelId}:${row.tag}`;
+        entry.tag = row.tag;
+        entry.capabilities = row.capabilities.filter((c) => c !== "cloud");
+        entry.updated = row.updated || card.updated;
+        entry.contextLength = row.contextLength;
+        entry.sizeBytes = row.sizeBytes;
+        entry.sizeLabel = row.sizeLabel;
+        entry.isMLX = row.isMLX;
+        entry.isCloud = entry.isCloud || row.tag === "cloud";
+        // The ":cloud" variant itself is cloud-only; real download rows are local.
+        if (entry.isCloud) entry.capabilities = [];
+        entries.push(entry);
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(TAGS_CONCURRENCY, Math.max(1, cards.length)) }, worker)
+  );
+  return entries;
+}
+
 type CatalogRow = {
   id: string;
   name: string;
@@ -170,7 +350,10 @@ type CatalogRow = {
   quantizationLevel: string | null;
   contextLength: number | null;
   sizeBytes: bigint | null;
+  sizeLabel: string | null;
   url: string | null;
+  isCloud: boolean;
+  isMLX: boolean;
   capabilities: string;
   sizes: string;
   pullCount: string | null;
@@ -181,10 +364,15 @@ function splitList(value: string): string[] {
   return value ? value.split(",").filter(Boolean) : [];
 }
 
+export function tagOf(id: string): string {
+  return id.includes(":") ? id.slice(id.indexOf(":") + 1) : "latest";
+}
+
 function rowToEntry(row: CatalogRow): CatalogEntry {
   return {
     id: row.id,
     name: row.name,
+    tag: tagOf(row.id),
     description: row.description ?? "",
     capabilities: splitList(row.capabilities),
     sizes: splitList(row.sizes),
@@ -197,7 +385,10 @@ function rowToEntry(row: CatalogRow): CatalogEntry {
     contextLength: row.contextLength,
     // BigInt from the DB is not JSON-serializable; catalog sizes fit a double.
     sizeBytes: row.sizeBytes == null ? null : Number(row.sizeBytes),
+    sizeLabel: row.sizeLabel,
     url: row.url,
+    isCloud: row.isCloud,
+    isMLX: row.isMLX,
   };
 }
 
@@ -205,8 +396,9 @@ function scrapedToEntry(model: ScrapedModel): CatalogEntry {
   return {
     id: model.id,
     name: model.name,
+    tag: tagOf(model.id),
     description: model.description,
-    capabilities: model.capabilities,
+    capabilities: model.capabilities.filter((c) => c !== "cloud"),
     sizes: model.sizes,
     pulls: model.pulls,
     updated: model.updated,
@@ -216,7 +408,10 @@ function scrapedToEntry(model: ScrapedModel): CatalogEntry {
     quantizationLevel: null,
     contextLength: null,
     sizeBytes: null,
+    sizeLabel: null,
     url: catalogPageUrl(model.id),
+    isCloud: model.capabilities.includes("cloud") || model.id.endsWith(":cloud"),
+    isMLX: false,
   };
 }
 
@@ -230,13 +425,13 @@ export async function fetchCloudEntries(): Promise<CatalogEntry[]> {
       const tagsModel = tagsModels[index++];
       const details = await fetchCloudModelDetails(tagsModel.model || tagsModel.name, tagsModel);
       const name = tagsModel.name;
-      const tag = name.includes(":") ? name.slice(name.indexOf(":") + 1) : "latest";
       results.push({
         id: name,
         name,
+        tag: tagOf(name),
         description: "",
         capabilities: details.capabilities,
-        sizes: [tag],
+        sizes: [tagOf(name)],
         pulls: "",
         updated: formatRelativeTime(details.modifiedAt ?? undefined),
         family: details.family,
@@ -245,7 +440,10 @@ export async function fetchCloudEntries(): Promise<CatalogEntry[]> {
         quantizationLevel: details.quantizationLevel,
         contextLength: details.contextLength,
         sizeBytes: tagsModel.size || null,
+        sizeLabel: null,
         url: catalogPageUrl(name),
+        isCloud: true,
+        isMLX: /-mlx/.test(tagOf(name)),
       });
     }
   }
@@ -256,8 +454,15 @@ export async function fetchCloudEntries(): Promise<CatalogEntry[]> {
   return results;
 }
 
-async function fetchScrapedEntries(): Promise<CatalogEntry[]> {
-  return (await scrapeAllModels()).map(scrapedToEntry);
+/**
+ * Merge cloud API entries with the scraped library catalog. Cloud rows win on
+ * id conflicts (they carry API-enriched params/quant/context).
+ */
+function mergeCatalog(primary: CatalogEntry[], secondary: CatalogEntry[]): CatalogEntry[] {
+  const byId = new Map<string, CatalogEntry>();
+  for (const entry of secondary) byId.set(entry.id, entry);
+  for (const entry of primary) byId.set(entry.id, entry);
+  return Array.from(byId.values());
 }
 
 async function persistCatalog(entries: CatalogEntry[]): Promise<void> {
@@ -274,7 +479,10 @@ async function persistCatalog(entries: CatalogEntry[]): Promise<void> {
         quantizationLevel: entry.quantizationLevel,
         contextLength: entry.contextLength,
         sizeBytes: entry.sizeBytes == null ? null : BigInt(entry.sizeBytes),
+        sizeLabel: entry.sizeLabel,
         url: entry.url,
+        isCloud: entry.isCloud,
+        isMLX: entry.isMLX,
         capabilities: entry.capabilities.join(","),
         sizes: entry.sizes.join(","),
         pullCount: entry.pulls || null,
@@ -306,7 +514,13 @@ export async function getCatalog(forceRefresh = false): Promise<CatalogResult> {
 
   const useCloud = isCloudCatalogEnabled();
   try {
-    const entries = useCloud ? await fetchCloudEntries() : await fetchScrapedEntries();
+    let entries: CatalogEntry[];
+    if (useCloud) {
+      // OLLAMA_API_KEY is set: the cloud API REPLACES scraping entirely.
+      entries = await fetchCloudEntries();
+    } else {
+      entries = await scrapeCatalogGranular();
+    }
     if (entries.length === 0) throw new Error("Catalog fetch returned no models");
     await persistCatalog(entries);
     return { entries, stale: false, source: useCloud ? "cloud" : "scrape" };
@@ -314,11 +528,13 @@ export async function getCatalog(forceRefresh = false): Promise<CatalogResult> {
     // Cloud fetch failed: fall back to scraping once before serving stale data.
     if (useCloud) {
       try {
-        const entries = await fetchScrapedEntries();
-        await persistCatalog(entries);
-        return { entries, stale: false, source: "scrape" };
+        const entries = await scrapeCatalogGranular();
+        if (entries.length > 0) {
+          await persistCatalog(entries);
+          return { entries, stale: false, source: "scrape" };
+        }
       } catch {
-        // ignore — stale DB rows may still be available below
+        // fall through to stale rows
       }
     }
     if (rows.length > 0) {

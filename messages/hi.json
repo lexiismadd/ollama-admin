@@ -191,7 +191,26 @@
     "params": "पैरामी.",
     "quant": "क्वांट",
     "context": "संदर्भ",
-    "viewOnOllama": "ollama.com पर देखें"
+    "viewOnOllama": "ollama.com पर देखें",
+    "model": "मॉडल",
+    "size": "आकार",
+    "speed": "गति",
+    "grade": "ग्रेड",
+    "filterType": "प्रकार",
+    "type_all": "सभी",
+    "type_local": "लोकल",
+    "type_cloud": "क्लाउड",
+    "type_mlx": "MLX",
+    "allQuants": "सभी क्वांट",
+    "allContexts": "सभी संदर्भ",
+    "cloudBadge": "क्लाउड",
+    "mlxBadge": "MLX",
+    "showing": "{total} में से {from}–{to} दिखा रहे हैं",
+    "pageSizeLabel": "प्रति पृष्ठ पंक्तियाँ",
+    "pageSizeOption": "{n} / पृष्ठ",
+    "pageOf": "पृष्ठ {page} / {total}",
+    "prevPage": "पिछला पृष्ठ",
+    "nextPage": "अगला पृष्ठ"
   },
   "admin": {
     "models": {
@@ -224,7 +243,8 @@
       "deleteError": "मॉडल हटाने में त्रुटि",
       "copyCode": "कोड कॉपी करें",
       "copied": "कॉपी हो गया",
-      "params": "पैरामी.",
+      "capabilities": "क्षमताएँ",
+      "params": "पैरामीटर",
       "context": "संदर्भ",
       "parentModel": "पैरेंट मॉडल",
       "actions": "क्रियाएँ"

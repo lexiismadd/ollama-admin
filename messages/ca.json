@@ -193,7 +193,26 @@
     "params": "Paràm.",
     "quant": "Quant.",
     "context": "Contexte",
-    "viewOnOllama": "Veure a ollama.com"
+    "viewOnOllama": "Veure a ollama.com",
+    "model": "Model",
+    "size": "Mida",
+    "speed": "Velocitat",
+    "grade": "Nota",
+    "filterType": "Tipus",
+    "type_all": "Tots",
+    "type_local": "Local",
+    "type_cloud": "Núvol",
+    "type_mlx": "MLX",
+    "allQuants": "Totes les quantitzacions",
+    "allContexts": "Tots els contextos",
+    "cloudBadge": "Núvol",
+    "mlxBadge": "MLX",
+    "showing": "Mostrant {from}–{to} de {total}",
+    "pageSizeLabel": "Files per pàgina",
+    "pageSizeOption": "{n} / pàgina",
+    "pageOf": "Pàgina {page} de {total}",
+    "prevPage": "Pàgina anterior",
+    "nextPage": "Pàgina següent"
   },
   "admin": {
     "models": {
@@ -226,7 +245,8 @@
       "deleteError": "Error en eliminar el model",
       "copyCode": "Copiar codi",
       "copied": "Copiat",
-      "params": "Paràm.",
+      "capabilities": "Capacitats",
+      "params": "Paràmetres",
       "context": "Contexte",
       "parentModel": "Model pare",
       "actions": "Accions"
