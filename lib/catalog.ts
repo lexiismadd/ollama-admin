@@ -3,11 +3,13 @@ import { ProxyAgent, } from "undici";
 import { prisma } from "@/lib/prisma";
 import {
   catalogPageUrl,
+  formatRelativeTime,
+} from "@/lib/catalog-cloud";
+import {
   fetchCloudCatalog,
   fetchCloudModelDetails,
-  formatRelativeTime,
   isCloudCatalogEnabled,
-} from "@/lib/catalog-cloud";
+} from "@/lib/catalog-cloud-server";
 
 export interface CatalogEntry {
   id: string;
