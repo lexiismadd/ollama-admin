@@ -210,7 +210,13 @@
     "pageSizeOption": "{n} / 页",
     "pageOf": "第 {page} 页，共 {total} 页",
     "prevPage": "上一页",
-    "nextPage": "下一页"
+    "nextPage": "下一页",
+    "manualInstall": "手动安装",
+    "manualInstallDescription": "从任意来源安装模型，例如 hf.co/user/repo:Q4_K_M",
+    "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
+    "install": "安装",
+    "installStarted": "正在安装 \"{name}\"…",
+    "hfBadge": "HF"
   },
   "admin": {
     "models": {
@@ -247,7 +253,15 @@
       "params": "参数",
       "context": "上下文",
       "parentModel": "父模型",
-      "actions": "操作"
+      "actions": "操作",
+      "update": "更新",
+      "updateAll": "全部更新",
+      "updating": "更新中…",
+      "updateStarted": "正在更新 \"{model}\"…",
+      "updateAllStarted": "正在更新 {n} 个模型…",
+      "updateComplete": "模型 \"{model}\" 已更新",
+      "updateError": "更新模型出错",
+      "updateAllComplete": "所有模型已更新"
     },
     "servers": {
       "title": "服务器",

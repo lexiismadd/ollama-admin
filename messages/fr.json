@@ -212,7 +212,13 @@
     "pageSizeOption": "{n} / page",
     "pageOf": "Page {page} sur {total}",
     "prevPage": "Page précédente",
-    "nextPage": "Page suivante"
+    "nextPage": "Page suivante",
+    "manualInstall": "Installation manuelle",
+    "manualInstallDescription": "Installer un modèle depuis n'importe quelle source, ex. hf.co/utilisateur/repo:Q4_K_M",
+    "modelRefPlaceholder": "hf.co/utilisateur/repo:Q4_K_M",
+    "install": "Installer",
+    "installStarted": "Installation de \"{name}\"…",
+    "hfBadge": "HF"
   },
   "admin": {
     "models": {
@@ -249,7 +255,15 @@
       "params": "Paramètres",
       "context": "Contexte",
       "parentModel": "Modèle parent",
-      "actions": "Actions"
+      "actions": "Actions",
+      "update": "Mettre à jour",
+      "updateAll": "Tout mettre à jour",
+      "updating": "Mise à jour…",
+      "updateStarted": "Mise à jour de \"{model}\"…",
+      "updateAllStarted": "Mise à jour de {n} modèles…",
+      "updateComplete": "Modèle \"{model}\" mis à jour",
+      "updateError": "Échec de la mise à jour du modèle",
+      "updateAllComplete": "Tous les modèles mis à jour"
     },
     "servers": {
       "title": "Serveurs",

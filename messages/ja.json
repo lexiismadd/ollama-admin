@@ -210,7 +210,13 @@
     "pageSizeOption": "{n} / ページ",
     "pageOf": "{total} ページ中 {page} ページ",
     "prevPage": "前のページ",
-    "nextPage": "次のページ"
+    "nextPage": "次のページ",
+    "manualInstall": "手動インストール",
+    "manualInstallDescription": "任意のソースからモデルをインストール（例: hf.co/user/repo:Q4_K_M）",
+    "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
+    "install": "インストール",
+    "installStarted": "\"{name}\" をインストール中…",
+    "hfBadge": "HF"
   },
   "admin": {
     "models": {
@@ -247,7 +253,15 @@
       "params": "パラメータ",
       "context": "コンテキスト",
       "parentModel": "親モデル",
-      "actions": "アクション"
+      "actions": "アクション",
+      "update": "更新",
+      "updateAll": "すべて更新",
+      "updating": "更新中…",
+      "updateStarted": "\"{model}\" を更新中…",
+      "updateAllStarted": "{n} 個のモデルを更新中…",
+      "updateComplete": "モデル \"{model}\" を更新しました",
+      "updateError": "モデルの更新に失敗しました",
+      "updateAllComplete": "すべてのモデルを更新しました"
     },
     "servers": {
       "title": "サーバー",

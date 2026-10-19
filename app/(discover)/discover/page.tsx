@@ -7,6 +7,7 @@ import { Search, Check, Download, Loader2, RefreshCw, ExternalLink } from "lucid
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import { useServers } from "@/lib/hooks/use-servers";
 import { scoreModel, gradeColor, gradeBg, type Grade } from "@/lib/model-scoring";
@@ -170,6 +171,7 @@ function ctxMatches(length: number | null, bucketKey: string): boolean {
 
 export default function DiscoverPage() {
   const t = useTranslations("discover");
+  const tc = useTranslations("common");
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "admin";
   const { toast } = useToast();
@@ -190,6 +192,9 @@ export default function DiscoverPage() {
   const [ctxFilter, setCtxFilter] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualRef, setManualRef] = useState("");
+  const [manualBusy, setManualBusy] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -346,6 +351,33 @@ export default function DiscoverPage() {
     }
   };
 
+  // Manual install: pull an arbitrary model ref from any source Ollama can
+  // fetch from (ollama.com, hf.co/user/repo:quant, ...).
+  const handleManualInstall = async () => {
+    const ref = manualRef.trim();
+    if (!ref || !selectedServer || manualBusy) return;
+    setManualBusy(true);
+    try {
+      const res = await fetch("/api/admin/models/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverId: selectedServer, name: ref }),
+      });
+      if (!res.ok) {
+        toast(t("pullError", { name: ref }), "error");
+        return;
+      }
+      setDownloadingRefs((prev) => new Set(prev).add(ref));
+      toast(t("installStarted", { name: ref }), "success");
+      setManualOpen(false);
+      setManualRef("");
+    } catch {
+      toast(t("pullError", { name: ref }), "error");
+    } finally {
+      setManualBusy(false);
+    }
+  };
+
   const isModelTagDownloaded = (modelName: string, tag: string) => {
     const ref = `${modelName}:${tag}`;
     for (const name of downloadedModels) {
@@ -457,6 +489,17 @@ export default function DiscoverPage() {
             <span className="rounded-full border border-[hsl(var(--border))] bg-[hsl(var(--muted))] px-2.5 py-0.5 text-xs text-[hsl(var(--muted-foreground))]">
               {gpuLabel}
             </span>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setManualOpen(true)}
+              disabled={!selectedServer}
+              title={t("manualInstallDescription")}
+              className="flex items-center gap-1.5 rounded-lg border border-[hsl(var(--border))] px-3 py-1.5 text-xs transition-colors hover:bg-[hsl(var(--accent))] disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {t("manualInstall")}
+            </button>
           )}
           <button
             onClick={handleRefresh}
@@ -646,6 +689,14 @@ export default function DiscoverPage() {
                         {t("mlxBadge")}
                       </span>
                     )}
+                    {row.id.startsWith("hf.co/") && (
+                      <span
+                        title={t("hfBadge")}
+                        className="shrink-0 rounded-full border border-[hsl(142 71% 45%)] px-1.5 py-px text-[10px] font-medium text-[hsl(142 71% 45%)]"
+                      >
+                        {t("hfBadge")}
+                      </span>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     {row.capabilities.map((cap) => (
@@ -795,6 +846,39 @@ export default function DiscoverPage() {
           </div>
         </div>
       )}
+
+      {/* Manual install modal */}
+      <Modal open={manualOpen} onClose={() => setManualOpen(false)} title={t("manualInstall")}>
+        <form
+          onSubmit={(e) => { e.preventDefault(); void handleManualInstall(); }}
+          className="space-y-3 text-sm"
+        >
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">{t("manualInstallDescription")}</p>
+          <Input
+            value={manualRef}
+            onChange={(e) => setManualRef(e.target.value)}
+            placeholder={t("modelRefPlaceholder")}
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setManualOpen(false)}
+              className="rounded-lg border border-[hsl(var(--border))] px-3 py-1.5 text-xs transition-colors hover:bg-[hsl(var(--accent))]"
+            >
+              {tc("cancel")}
+            </button>
+            <button
+              type="submit"
+              disabled={manualBusy || !manualRef.trim() || !selectedServer}
+              className="flex items-center gap-1.5 rounded-lg bg-[hsl(var(--primary))] px-3 py-1.5 text-xs text-[hsl(var(--primary-foreground))] transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {manualBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {t("install")}
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

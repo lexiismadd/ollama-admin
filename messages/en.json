@@ -210,7 +210,13 @@
     "pageSizeOption": "{n} / page",
     "pageOf": "Page {page} of {total}",
     "prevPage": "Previous page",
-    "nextPage": "Next page"
+    "nextPage": "Next page",
+    "manualInstall": "Manual install",
+    "manualInstallDescription": "Install a model from any source, e.g. hf.co/user/repo:Q4_K_M",
+    "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
+    "install": "Install",
+    "installStarted": "Installing \"{name}\"…",
+    "hfBadge": "HF"
   },
   "admin": {
     "models": {
@@ -247,7 +253,15 @@
       "params": "Params",
       "context": "Context",
       "parentModel": "Parent model",
-      "actions": "Actions"
+      "actions": "Actions",
+      "update": "Update",
+      "updateAll": "Update all",
+      "updating": "Updating…",
+      "updateStarted": "Updating \"{model}\"…",
+      "updateAllStarted": "Updating {n} models…",
+      "updateComplete": "Model \"{model}\" updated",
+      "updateError": "Failed to update model",
+      "updateAllComplete": "All models updated"
     },
     "servers": {
       "title": "Servers",

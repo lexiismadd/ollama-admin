@@ -212,7 +212,13 @@
     "pageSizeOption": "{n} / pàgina",
     "pageOf": "Pàgina {page} de {total}",
     "prevPage": "Pàgina anterior",
-    "nextPage": "Pàgina següent"
+    "nextPage": "Pàgina següent",
+    "manualInstall": "Instal·lació manual",
+    "manualInstallDescription": "Instal·la un model des de qualsevol font, p. ex. hf.co/usuari/repo:Q4_K_M",
+    "modelRefPlaceholder": "hf.co/usuari/repo:Q4_K_M",
+    "install": "Instal·la",
+    "installStarted": "Instal·lant \"{name}\"…",
+    "hfBadge": "HF"
   },
   "admin": {
     "models": {
@@ -249,7 +255,15 @@
       "params": "Paràmetres",
       "context": "Contexte",
       "parentModel": "Model pare",
-      "actions": "Accions"
+      "actions": "Accions",
+      "update": "Actualitza",
+      "updateAll": "Actualitza-ho tot",
+      "updating": "Actualitzant…",
+      "updateStarted": "Actualitzant \"{model}\"…",
+      "updateAllStarted": "Actualitzant {n} models…",
+      "updateComplete": "Model \"{model}\" actualitzat",
+      "updateError": "Error en actualitzar el model",
+      "updateAllComplete": "Tots els models actualitzats"
     },
     "servers": {
       "title": "Servidors",
