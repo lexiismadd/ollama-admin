@@ -1,9 +1,9 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { OllamaModel, OllamaRunningModel, OllamaShowResponse } from "@/lib/ollama";
-import { Package, Search, Cpu, Eye, Trash2, AlertTriangle, Upload, ExternalLink } from "lucide-react";
+import { Package, Search, Cpu, Eye, Trash2, AlertTriangle, Upload, ExternalLink, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -30,6 +30,29 @@ function formatContextLength(length: number | null | undefined): string | null {
   return `${length}`;
 }
 
+// Australian regional format (dd/mm/yyyy, 24hr time) per the recognised
+// regional settings — never the browser's locale, which may differ.
+function formatDateTimeRegional(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatDateRegional(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 function displayName(family: string | undefined, parentModel: string | undefined, name: string): string {
   if (parentModel && parentModel !== name) return parentModel;
   return family || "—";
@@ -43,6 +66,16 @@ export default function ModelsPage() {
   const unloadModel = useUnloadModel(tc);
   const [models, setModels] = useState<OllamaModel[]>([]);
   const [running, setRunning] = useState<OllamaRunningModel[]>([]);
+  const [updatingRefs, setUpdatingRefsState] = useState<Set<string>>(new Set());
+  const [updatingAll, setUpdatingAll] = useState(false);
+  const updatingRefsRef = useRef<Set<string>>(new Set());
+  const updatingAllRef = useRef(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const setUpdatingRefs = (next: Set<string>) => {
+    updatingRefsRef.current = next;
+    setUpdatingRefsState(next);
+  };
   const [loading, setLoading] = useState(true);
   const [connectionError, setConnectionError] = useState(false);
   const [search, setSearch] = useState("");
@@ -122,6 +155,100 @@ export default function ModelsPage() {
     fetchModels();
   };
 
+  // "Update" = re-pull the model ref; Ollama fetches newer layers when the
+  // upstream (ollama.com, hf.co/...) has published an update.
+  const handleUpdate = async (name: string) => {
+    if (!selectedServer || updatingRefsRef.current.has(name)) return;
+    const next = new Set(updatingRefsRef.current).add(name);
+    setUpdatingRefs(next);
+    try {
+      const res = await fetch("/api/admin/models/pull", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ serverId: selectedServer, name }),
+      });
+      if (!res.ok) {
+        toast(t("updateError"), "error");
+        const done = new Set(updatingRefsRef.current); done.delete(name);
+        setUpdatingRefs(done);
+      } else {
+        toast(t("updateStarted", { model: name }), "success");
+      }
+    } catch {
+      toast(t("updateError"), "error");
+      const done = new Set(updatingRefsRef.current); done.delete(name);
+      setUpdatingRefs(done);
+    }
+  };
+
+  // Re-pull every installed model, including refs from non-ollama.com
+  // sources (hf.co/...). Staggered to avoid hammering the server.
+  const handleUpdateAll = async () => {
+    if (!selectedServer || updatingAll || models.length === 0) return;
+    setUpdatingAll(true);
+    updatingAllRef.current = true;
+    toast(t("updateAllStarted", { n: models.length }), "success");
+    for (const model of models) {
+      if (updatingRefsRef.current.has(model.name)) continue;
+      const next = new Set(updatingRefsRef.current).add(model.name);
+      setUpdatingRefs(next);
+      try {
+        await fetch("/api/admin/models/pull", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ serverId: selectedServer, name: model.name }),
+        });
+      } catch {
+        // per-model failure is surfaced by the status poll
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  };
+
+  // Poll pull-job status; completes tracked updates and refreshes the list.
+  useEffect(() => {
+    if (updatingRefs.size === 0) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+    if (pollRef.current) return;
+
+    pollRef.current = setInterval(async () => {
+      if (!selectedServer) return;
+      try {
+        const res = await fetch(`/api/admin/models/pull/status?serverId=${selectedServer}`);
+        if (!res.ok) return;
+        const jobs: { model: string; tag: string; status: string; error?: string }[] = await res.json();
+        const refOf = (j: { model: string; tag: string }) => (j.tag ? `${j.model}:${j.tag}` : j.model);
+        const finished = jobs.filter(
+          (j) => (j.status === "done" || j.status === "error") && updatingRefsRef.current.has(refOf(j))
+        );
+        if (finished.length === 0) return;
+
+        const next = new Set(updatingRefsRef.current);
+        for (const job of finished) next.delete(refOf(job));
+        setUpdatingRefs(next);
+
+        for (const job of finished) {
+          if (job.status === "error") {
+            toast(job.error ? `${t("updateError")}: ${job.error}` : t("updateError"), "error");
+          } else {
+            toast(t("updateComplete", { model: refOf(job) }), "success");
+          }
+        }
+        fetchModels();
+
+        if (updatingAllRef.current && next.size === 0) {
+          updatingAllRef.current = false;
+          setUpdatingAll(false);
+          toast(t("updateAllComplete"), "success");
+        }
+      } catch { /* ignore polling errors */ }
+    }, 4000);
+
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [updatingRefs.size, selectedServer, t, toast, fetchModels]);
+
   const isRunning = (name: string) =>
     running.some((r) => r.name === name || r.model === name);
 
@@ -189,11 +316,23 @@ export default function ModelsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("title")}</h1>
-        {servers.length > 1 && (
-          <Select value={selectedServer} onChange={(e) => setSelectedServer(e.target.value)} className="w-auto">
-            {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </Select>
-        )}
+        <div className="flex items-center gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={handleUpdateAll}
+            disabled={!selectedServer || updatingAll || models.length === 0}
+            title={t("updateAll")}
+          >
+            <RefreshCw className={`h-4 w-4 ${updatingAll ? "animate-spin" : ""}`} />
+            <span className="hidden lg:inline">{updatingAll ? t("updating") : t("updateAll")}</span>
+          </Button>
+          {servers.length > 1 && (
+            <Select value={selectedServer} onChange={(e) => setSelectedServer(e.target.value)} className="w-auto">
+              {servers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          )}
+        </div>
       </div>
 
       <div className="mt-4">
@@ -213,6 +352,7 @@ export default function ModelsPage() {
             <span className="w-20 shrink-0 hidden md:block text-right">{t("context")}</span>
             <span className="w-24 shrink-0 text-right">{t("size")}</span>
             <span className="w-24 shrink-0 hidden sm:block text-right">{t("modified")}</span>
+            <span className="w-32 shrink-0 hidden xl:block text-right">{t("lastUsed")}</span>
             <span className="w-36 shrink-0 text-right">{t("actions")}</span>
           </div>
 
@@ -271,18 +411,34 @@ export default function ModelsPage() {
                   {formatContextLength(model.context_length) || "—"}
                 </span>
 
-                {/* Disk size */}
+                {/* Disk size — cloud-only models (no local files) show "cloud" */}
                 <span className="w-24 shrink-0 text-right text-xs tabular-nums">
-                  {formatBytes(model.size)}
+                  {model.size > 0
+                    ? formatBytes(model.size)
+                    : <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{t("cloud")}</span>}
                 </span>
 
                 {/* Modified */}
                 <span className="w-24 shrink-0 hidden sm:block text-right text-xs text-[hsl(var(--muted-foreground))]">
-                  {new Date(model.modified_at).toLocaleDateString()}
+                  {formatDateRegional(model.modified_at)}
+                </span>
+
+                {/* Last used */}
+                <span className="w-32 shrink-0 hidden xl:block text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+                  {formatDateTimeRegional(model.last_used)}
                 </span>
 
                 {/* Actions */}
                 <div className="w-36 shrink-0 flex items-center justify-end gap-1.5">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleUpdate(model.name)}
+                    disabled={updatingRefs.has(model.name)}
+                    title={t("update")}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${updatingRefs.has(model.name) ? "animate-spin" : ""}`} />
+                  </Button>
                   {isRunning(model.name) && (
                     <Button variant="secondary" size="sm" onClick={() => handleUnload(model.name)} title={t("unload")}>
                       <Upload className="h-4 w-4" />

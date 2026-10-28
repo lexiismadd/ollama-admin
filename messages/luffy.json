@@ -210,7 +210,15 @@
     "pageSizeOption": "{n} / page",
     "pageOf": "Page {page} of {total}",
     "prevPage": "Back a page",
-    "nextPage": "Next page"
+    "nextPage": "Next page",
+    "manualInstall": "Manual install",
+    "manualInstallDescription": "Install a model from any source, e.g. hf.co/user/repo:Q4_K_M",
+    "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
+    "install": "Install",
+    "installStarted": "Installing \"{name}\"…",
+    "hfBadge": "HF",
+    "contextMin": "Min context",
+    "contextMax": "Max context"
   },
   "admin": {
     "models": {
@@ -247,7 +255,17 @@
       "params": "Params",
       "context": "Context",
       "parentModel": "Parent Crew",
-      "actions": "Actions"
+      "actions": "Actions",
+      "update": "Update",
+      "updateAll": "Update all",
+      "updating": "Updating…",
+      "updateStarted": "Updating \"{model}\"…",
+      "updateAllStarted": "Updating {n} models…",
+      "updateComplete": "Model \"{model}\" updated!",
+      "updateError": "Couldn't update it!",
+      "updateAllComplete": "All models updated!",
+      "lastUsed": "Last used",
+      "cloud": "Sky"
     },
     "servers": {
       "title": "My Ships (Servers)",

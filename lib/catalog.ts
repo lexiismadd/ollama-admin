@@ -516,8 +516,14 @@ export async function getCatalog(forceRefresh = false): Promise<CatalogResult> {
   try {
     let entries: CatalogEntry[];
     if (useCloud) {
-      // OLLAMA_API_KEY is set: the cloud API REPLACES scraping entirely.
-      entries = await fetchCloudEntries();
+      // Cloud models from the API plus the full library (per-variant rows).
+      // Cloud rows win on id conflicts (API-enriched params/quant/context);
+      // every library variant — not just cloud/latest — stays listed.
+      const [cloud, library] = await Promise.all([
+        fetchCloudEntries(),
+        scrapeCatalogGranular().catch(() => [] as CatalogEntry[]),
+      ]);
+      entries = library.length > 0 ? mergeCatalog(cloud, library) : cloud;
     } else {
       entries = await scrapeCatalogGranular();
     }

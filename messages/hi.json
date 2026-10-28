@@ -210,7 +210,15 @@
     "pageSizeOption": "{n} / पृष्ठ",
     "pageOf": "पृष्ठ {page} / {total}",
     "prevPage": "पिछला पृष्ठ",
-    "nextPage": "अगला पृष्ठ"
+    "nextPage": "अगला पृष्ठ",
+    "manualInstall": "मैनुअल इंस्टॉल",
+    "manualInstallDescription": "किसी भी स्रोत से मॉडल इंस्टॉल करें, जैसे hf.co/user/repo:Q4_K_M",
+    "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
+    "install": "इंस्टॉल करें",
+    "installStarted": "\"{name}\" इंस्टॉल हो रहा है…",
+    "hfBadge": "HF",
+    "contextMin": "न्यूनतम संदर्भ",
+    "contextMax": "अधिकतम संदर्भ"
   },
   "admin": {
     "models": {
@@ -247,7 +255,17 @@
       "params": "पैरामीटर",
       "context": "संदर्भ",
       "parentModel": "पैरेंट मॉडल",
-      "actions": "क्रियाएँ"
+      "actions": "क्रियाएँ",
+      "update": "अपडेट करें",
+      "updateAll": "सभी अपडेट करें",
+      "updating": "अपडेट हो रहा है…",
+      "updateStarted": "\"{model}\" अपडेट हो रहा है…",
+      "updateAllStarted": "{n} मॉडल अपडेट हो रहे हैं…",
+      "updateComplete": "मॉडल \"{model}\" अपडेट हो गया",
+      "updateError": "मॉडल अपडेट करने में त्रुटि",
+      "updateAllComplete": "सभी मॉडल अपडेट हो गए",
+      "lastUsed": "अंतिम उपयोग",
+      "cloud": "क्लाउड"
     },
     "servers": {
       "title": "सर्वर",
