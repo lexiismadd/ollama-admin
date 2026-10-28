@@ -264,7 +264,8 @@
       "updateComplete": "Modelo \"{model}\" actualizado",
       "updateError": "Error al actualizar el modelo",
       "updateAllComplete": "Todos los modelos actualizados",
-      "lastUsed": "Último uso"
+      "lastUsed": "Último uso",
+      "cloud": "Nube"
     },
     "servers": {
       "title": "Servidores",

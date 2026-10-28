@@ -264,7 +264,8 @@
       "updateComplete": "モデル \"{model}\" を更新しました",
       "updateError": "モデルの更新に失敗しました",
       "updateAllComplete": "すべてのモデルを更新しました",
-      "lastUsed": "最終使用"
+      "lastUsed": "最終使用",
+      "cloud": "クラウド"
     },
     "servers": {
       "title": "サーバー",

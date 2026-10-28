@@ -264,7 +264,8 @@
       "updateComplete": "模型 \"{model}\" 已更新",
       "updateError": "更新模型出错",
       "updateAllComplete": "所有模型已更新",
-      "lastUsed": "最后使用"
+      "lastUsed": "最后使用",
+      "cloud": "云端"
     },
     "servers": {
       "title": "服务器",

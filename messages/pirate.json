@@ -264,7 +264,8 @@
       "updateComplete": "Model \"{model}\" updated, arr!",
       "updateError": "Failed to update the vessel!",
       "updateAllComplete": "All models updated, arr!",
-      "lastUsed": "Last used"
+      "lastUsed": "Last used",
+      "cloud": "Crow's Nest"
     },
     "servers": {
       "title": "The Fleet (Servers)",

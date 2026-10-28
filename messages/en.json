@@ -264,7 +264,8 @@
       "updateComplete": "Model \"{model}\" updated",
       "updateError": "Failed to update model",
       "updateAllComplete": "All models updated",
-      "lastUsed": "Last used"
+      "lastUsed": "Last used",
+      "cloud": "Cloud"
     },
     "servers": {
       "title": "Servers",

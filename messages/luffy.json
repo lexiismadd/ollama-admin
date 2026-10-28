@@ -264,7 +264,8 @@
       "updateComplete": "Model \"{model}\" updated!",
       "updateError": "Couldn't update it!",
       "updateAllComplete": "All models updated!",
-      "lastUsed": "Last used"
+      "lastUsed": "Last used",
+      "cloud": "Sky"
     },
     "servers": {
       "title": "My Ships (Servers)",

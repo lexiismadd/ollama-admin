@@ -264,7 +264,8 @@
       "updateComplete": "मॉडल \"{model}\" अपडेट हो गया",
       "updateError": "मॉडल अपडेट करने में त्रुटि",
       "updateAllComplete": "सभी मॉडल अपडेट हो गए",
-      "lastUsed": "अंतिम उपयोग"
+      "lastUsed": "अंतिम उपयोग",
+      "cloud": "क्लाउड"
     },
     "servers": {
       "title": "सर्वर",

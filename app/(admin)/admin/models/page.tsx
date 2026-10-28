@@ -411,9 +411,11 @@ export default function ModelsPage() {
                   {formatContextLength(model.context_length) || "—"}
                 </span>
 
-                {/* Disk size */}
+                {/* Disk size — cloud-only models (no local files) show "cloud" */}
                 <span className="w-24 shrink-0 text-right text-xs tabular-nums">
-                  {formatBytes(model.size)}
+                  {model.size > 0
+                    ? formatBytes(model.size)
+                    : <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{t("cloud")}</span>}
                 </span>
 
                 {/* Modified */}

@@ -266,7 +266,8 @@
       "updateComplete": "Model \"{model}\" actualitzat",
       "updateError": "Error en actualitzar el model",
       "updateAllComplete": "Tots els models actualitzats",
-      "lastUsed": "Últim ús"
+      "lastUsed": "Últim ús",
+      "cloud": "Núvol"
     },
     "servers": {
       "title": "Servidors",

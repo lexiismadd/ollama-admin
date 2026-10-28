@@ -266,7 +266,8 @@
       "updateComplete": "Modèle \"{model}\" mis à jour",
       "updateError": "Échec de la mise à jour du modèle",
       "updateAllComplete": "Tous les modèles mis à jour",
-      "lastUsed": "Dernière utilisation"
+      "lastUsed": "Dernière utilisation",
+      "cloud": "Cloud"
     },
     "servers": {
       "title": "Serveurs",
