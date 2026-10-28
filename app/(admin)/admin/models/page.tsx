@@ -30,6 +30,29 @@ function formatContextLength(length: number | null | undefined): string | null {
   return `${length}`;
 }
 
+// Australian regional format (dd/mm/yyyy, 24hr time) per the recognised
+// regional settings — never the browser's locale, which may differ.
+function formatDateTimeRegional(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-AU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatDateRegional(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-AU", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
 function displayName(family: string | undefined, parentModel: string | undefined, name: string): string {
   if (parentModel && parentModel !== name) return parentModel;
   return family || "—";
@@ -329,6 +352,7 @@ export default function ModelsPage() {
             <span className="w-20 shrink-0 hidden md:block text-right">{t("context")}</span>
             <span className="w-24 shrink-0 text-right">{t("size")}</span>
             <span className="w-24 shrink-0 hidden sm:block text-right">{t("modified")}</span>
+            <span className="w-32 shrink-0 hidden xl:block text-right">{t("lastUsed")}</span>
             <span className="w-36 shrink-0 text-right">{t("actions")}</span>
           </div>
 
@@ -394,7 +418,12 @@ export default function ModelsPage() {
 
                 {/* Modified */}
                 <span className="w-24 shrink-0 hidden sm:block text-right text-xs text-[hsl(var(--muted-foreground))]">
-                  {new Date(model.modified_at).toLocaleDateString()}
+                  {formatDateRegional(model.modified_at)}
+                </span>
+
+                {/* Last used */}
+                <span className="w-32 shrink-0 hidden xl:block text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+                  {formatDateTimeRegional(model.last_used)}
                 </span>
 
                 {/* Actions */}

@@ -15,6 +15,7 @@ export interface OllamaModel {
   capabilities?: string[];
   context_length?: number | null;
   url?: string | null;
+  last_used?: string | null;
 }
 
 export interface OllamaRunningModel {

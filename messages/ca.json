@@ -218,7 +218,9 @@
     "modelRefPlaceholder": "hf.co/usuari/repo:Q4_K_M",
     "install": "Instal·la",
     "installStarted": "Instal·lant \"{name}\"…",
-    "hfBadge": "HF"
+    "hfBadge": "HF",
+    "contextMin": "Contexte mín.",
+    "contextMax": "Contexte màx."
   },
   "admin": {
     "models": {
@@ -263,7 +265,8 @@
       "updateAllStarted": "Actualitzant {n} models…",
       "updateComplete": "Model \"{model}\" actualitzat",
       "updateError": "Error en actualitzar el model",
-      "updateAllComplete": "Tots els models actualitzats"
+      "updateAllComplete": "Tots els models actualitzats",
+      "lastUsed": "Últim ús"
     },
     "servers": {
       "title": "Servidors",

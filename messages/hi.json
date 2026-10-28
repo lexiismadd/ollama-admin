@@ -216,7 +216,9 @@
     "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
     "install": "इंस्टॉल करें",
     "installStarted": "\"{name}\" इंस्टॉल हो रहा है…",
-    "hfBadge": "HF"
+    "hfBadge": "HF",
+    "contextMin": "न्यूनतम संदर्भ",
+    "contextMax": "अधिकतम संदर्भ"
   },
   "admin": {
     "models": {
@@ -261,7 +263,8 @@
       "updateAllStarted": "{n} मॉडल अपडेट हो रहे हैं…",
       "updateComplete": "मॉडल \"{model}\" अपडेट हो गया",
       "updateError": "मॉडल अपडेट करने में त्रुटि",
-      "updateAllComplete": "सभी मॉडल अपडेट हो गए"
+      "updateAllComplete": "सभी मॉडल अपडेट हो गए",
+      "lastUsed": "अंतिम उपयोग"
     },
     "servers": {
       "title": "सर्वर",

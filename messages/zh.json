@@ -216,7 +216,9 @@
     "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
     "install": "安装",
     "installStarted": "正在安装 \"{name}\"…",
-    "hfBadge": "HF"
+    "hfBadge": "HF",
+    "contextMin": "最小上下文",
+    "contextMax": "最大上下文"
   },
   "admin": {
     "models": {
@@ -261,7 +263,8 @@
       "updateAllStarted": "正在更新 {n} 个模型…",
       "updateComplete": "模型 \"{model}\" 已更新",
       "updateError": "更新模型出错",
-      "updateAllComplete": "所有模型已更新"
+      "updateAllComplete": "所有模型已更新",
+      "lastUsed": "最后使用"
     },
     "servers": {
       "title": "服务器",

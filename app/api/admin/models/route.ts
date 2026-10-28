@@ -25,9 +25,22 @@ export async function GET(req: NextRequest) {
   try {
     const data = await listModels(server.url);
     const extras = await enrichModels(server.url, data.models);
+    // Last used per model, from the request log (records proxied usage).
+    const usage = await prisma.log.groupBy({
+      by: ["model"],
+      _max: { createdAt: true },
+      where: { serverId },
+    });
+    const lastUsed = new Map(usage.map((u) => [u.model, u._max.createdAt]));
     const models = data.models.map((model) => {
       const extra = extras.get(model.name);
-      return { ...model, capabilities: extra?.capabilities ?? [], context_length: extra?.contextLength ?? null, url: extra?.url ?? null };
+      return {
+        ...model,
+        capabilities: extra?.capabilities ?? [],
+        context_length: extra?.contextLength ?? null,
+        url: extra?.url ?? null,
+        last_used: lastUsed.get(model.name)?.toISOString() ?? null,
+      };
     });
     return NextResponse.json({ models });
   } catch (err) {

@@ -216,7 +216,9 @@
     "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
     "install": "Install",
     "installStarted": "Installing \"{name}\"…",
-    "hfBadge": "HF"
+    "hfBadge": "HF",
+    "contextMin": "Min context",
+    "contextMax": "Max context"
   },
   "admin": {
     "models": {
@@ -261,7 +263,8 @@
       "updateAllStarted": "Updating {n} models…",
       "updateComplete": "Model \"{model}\" updated!",
       "updateError": "Couldn't update it!",
-      "updateAllComplete": "All models updated!"
+      "updateAllComplete": "All models updated!",
+      "lastUsed": "Last used"
     },
     "servers": {
       "title": "My Ships (Servers)",

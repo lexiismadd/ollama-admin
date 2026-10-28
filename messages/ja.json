@@ -216,7 +216,9 @@
     "modelRefPlaceholder": "hf.co/user/repo:Q4_K_M",
     "install": "インストール",
     "installStarted": "\"{name}\" をインストール中…",
-    "hfBadge": "HF"
+    "hfBadge": "HF",
+    "contextMin": "最小コンテキスト",
+    "contextMax": "最大コンテキスト"
   },
   "admin": {
     "models": {
@@ -261,7 +263,8 @@
       "updateAllStarted": "{n} 個のモデルを更新中…",
       "updateComplete": "モデル \"{model}\" を更新しました",
       "updateError": "モデルの更新に失敗しました",
-      "updateAllComplete": "すべてのモデルを更新しました"
+      "updateAllComplete": "すべてのモデルを更新しました",
+      "lastUsed": "最終使用"
     },
     "servers": {
       "title": "サーバー",

@@ -46,21 +46,7 @@ type SortKey = "model" | "updated" | "params" | "quant" | "context" | "size" | "
 
 type FilterType = "all" | "local" | "cloud" | "mlx";
 
-const CTX_BUCKETS: Array<{ key: string; max: number | null }> = [
-  { key: "ctx-le8k", max: 8192 },
-  { key: "ctx-le32k", max: 32768 },
-  { key: "ctx-le128k", max: 131072 },
-  { key: "ctx-le256k", max: 262144 },
-  { key: "ctx-gt256k", max: null },
-];
-
-const CTX_BUCKET_LABELS: Record<string, string> = {
-  "ctx-le8k": "≤ 8K",
-  "ctx-le32k": "≤ 32K",
-  "ctx-le128k": "≤ 128K",
-  "ctx-le256k": "≤ 256K",
-  "ctx-gt256k": "> 256K",
-};
+const CTX_SLIDER_MAX = 1048576;
 
 const GRADE_LABELS: Record<Grade, string> = {
   S: "≥50 t/s", A: "≥30 t/s", B: "≥15 t/s", C: "≥8 t/s", D: "≥3 t/s", F: "no fit",
@@ -162,13 +148,6 @@ function cmpNullable<T>(a: T | null, b: T | null, cmp: (x: T, y: T) => number): 
   return cmp(a, b);
 }
 
-function ctxMatches(length: number | null, bucketKey: string): boolean {
-  const bucket = CTX_BUCKETS.find((b) => b.key === bucketKey);
-  if (!bucket || length == null) return bucket == null;
-  if (bucket.max == null) return length > 262144;
-  return length <= bucket.max;
-}
-
 export default function DiscoverPage() {
   const t = useTranslations("discover");
   const tc = useTranslations("common");
@@ -188,8 +167,9 @@ export default function DiscoverPage() {
   const [sortBy, setSortBy] = useState<SortKey>("updated");
   const [sortDir, setSortDir] = useState<1 | -1>(1);
   const [filterType, setFilterType] = useState<FilterType>("all");
-  const [quantFilter, setQuantFilter] = useState("all");
-  const [ctxFilter, setCtxFilter] = useState("all");
+  const [selectedQuants, setSelectedQuants] = useState<string[]>([]);
+  const [ctxMin, setCtxMin] = useState(0);
+  const [ctxMax, setCtxMax] = useState(CTX_SLIDER_MAX);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [manualOpen, setManualOpen] = useState(false);
@@ -405,8 +385,8 @@ export default function DiscoverPage() {
       if (filterType === "cloud" && !row.isCloud) return false;
       if (filterType === "mlx" && !row.isMLX) return false;
       if (filterType === "local" && (row.isCloud || row.isMLX)) return false;
-      if (quantFilter !== "all" && (row.quantizationLevel ?? "") !== quantFilter) return false;
-      if (ctxFilter !== "all" && !ctxMatches(row.contextLength, ctxFilter)) return false;
+      if (selectedQuants.length > 0 && !selectedQuants.includes(row.quantizationLevel ?? "")) return false;
+      if (row.contextLength != null && (row.contextLength < ctxMin || row.contextLength > ctxMax)) return false;
       if (fitsGpuOnly && gpuSpecs) {
         const sizeGB = rowSizeGB(row);
         if (sizeGB !== null && sizeGB > gpuSpecs.vramGB) return false;
@@ -445,12 +425,12 @@ export default function DiscoverPage() {
 
     return [...rows].sort((a, b) => cmp(a, b) * sortDir);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, filterType, quantFilter, ctxFilter, fitsGpuOnly, gpuSpecs, sortBy, sortDir]);
+  }, [models, filterType, selectedQuants, ctxMin, ctxMax, fitsGpuOnly, gpuSpecs, sortBy, sortDir]);
 
   // Reset to the first page whenever the row set changes.
   useEffect(() => {
     setPage(1);
-  }, [filterType, quantFilter, ctxFilter, sortBy, sortDir, pageSize, search, selectedCaps]);
+  }, [filterType, selectedQuants, ctxMin, ctxMax, sortBy, sortDir, pageSize, search, selectedCaps]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const safePage = Math.min(page, totalPages);
@@ -478,6 +458,16 @@ export default function DiscoverPage() {
       setSortDir(1);
     }
   };
+
+  const toggleQuant = (q: string) => {
+    setSelectedQuants((prev) => prev.includes(q) ? prev.filter((x) => x !== q) : [...prev, q]);
+  };
+
+  // Context slider bounds track the widest context in the catalog/search data.
+  const ctxBounds = useMemo(() => {
+    const lengths = models.map((m) => m.contextLength).filter((l): l is number => l != null);
+    return { min: 0, max: Math.max(CTX_SLIDER_MAX, ...lengths, 0) };
+  }, [models]);
 
   return (
     <div className="p-6">
@@ -557,7 +547,7 @@ export default function DiscoverPage() {
         )}
       </div>
 
-      {/* Type filter (Local / Cloud / MLX) + quant + context dropdowns */}
+      {/* Type filter (Local / Cloud / MLX) */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-2" role="group" aria-label={t("filterType")}>
           {(["all", "local", "cloud", "mlx"] as FilterType[]).map((ft) => (
@@ -575,28 +565,66 @@ export default function DiscoverPage() {
             </button>
           ))}
         </div>
-        <Select
-          value={quantFilter}
-          onChange={(e) => setQuantFilter(e.target.value)}
-          className="w-36"
-          aria-label={t("quant")}
-        >
-          <option value="all">{t("allQuants")}</option>
+      </div>
+
+      {/* Quant chips + context range sliders — same row */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("quant")}>
+          <button
+            onClick={() => setSelectedQuants([])}
+            aria-pressed={selectedQuants.length === 0}
+            className={`rounded-full border px-3 py-1 text-xs transition-colors ${
+              selectedQuants.length === 0
+                ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                : "border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))]"
+            }`}
+          >
+            {t("allQuants")}
+          </button>
           {quantOptions.map((q) => (
-            <option key={q} value={q}>{q}</option>
+            <button
+              key={q}
+              onClick={() => toggleQuant(q)}
+              aria-pressed={selectedQuants.includes(q)}
+              className={`rounded-full border px-3 py-1 text-xs font-mono transition-colors ${
+                selectedQuants.includes(q)
+                  ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))]"
+                  : "border-[hsl(var(--border))] hover:bg-[hsl(var(--accent))]"
+              }`}
+            >
+              {q}
+            </button>
           ))}
-        </Select>
-        <Select
-          value={ctxFilter}
-          onChange={(e) => setCtxFilter(e.target.value)}
-          className="w-36"
-          aria-label={t("context")}
-        >
-          <option value="all">{t("allContexts")}</option>
-          {CTX_BUCKETS.map((b) => (
-            <option key={b.key} value={b.key}>{CTX_BUCKET_LABELS[b.key]}</option>
-          ))}
-        </Select>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="range"
+              min={0}
+              max={ctxBounds.max}
+              step={4096}
+              value={ctxMin}
+              onChange={(e) => { const v = Number(e.target.value); setCtxMin(v); if (v > ctxMax) setCtxMax(v); }}
+              aria-label={t("contextMin")}
+              className="w-28 accent-[hsl(var(--primary))]"
+            />
+            <span className="w-14 text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">{formatContextLength(ctxMin)}</span>
+          </div>
+          <span className="text-xs text-[hsl(var(--muted-foreground))]">–</span>
+          <div className="flex items-center gap-1.5">
+            <input
+              type="range"
+              min={0}
+              max={ctxBounds.max}
+              step={4096}
+              value={ctxMax}
+              onChange={(e) => { const v = Number(e.target.value); setCtxMax(v); if (v < ctxMin) setCtxMin(v); }}
+              aria-label={t("contextMax")}
+              className="w-28 accent-[hsl(var(--primary))]"
+            />
+            <span className="w-14 text-left text-xs tabular-nums text-[hsl(var(--muted-foreground))]">{formatContextLength(ctxMax)}</span>
+          </div>
+        </div>
       </div>
 
       {/* GPU grade legend */}
@@ -657,6 +685,8 @@ export default function DiscoverPage() {
               ? sizeGB < 10 ? `${sizeGB.toFixed(1)} GB` : `${Math.round(sizeGB)} GB`
               : null;
             const sizeText = row.sizeLabel || (row.sizeBytes ? formatSizeBytes(row.sizeBytes) : gbLabel || "—");
+            // Cloud-only rows without a download size show "cloud" instead of a dash.
+            const cloudOnlySize = row.isCloud && !row.sizeBytes && !row.sizeLabel;
             const noFit = score && !score.fits;
             const isLast = idx === pageRows.length - 1;
 
@@ -734,7 +764,11 @@ export default function DiscoverPage() {
 
                 {/* Download size (per-variant when known) + VRAM% */}
                 <div className="w-28 shrink-0 flex items-center justify-end gap-1.5" title={row.sizeLabel ?? undefined}>
-                  <span className="tabular-nums truncate max-w-24">{sizeText}</span>
+                  {cloudOnlySize ? (
+                    <span className="text-[10px] text-[hsl(var(--muted-foreground))]">{t("cloudBadge")}</span>
+                  ) : (
+                    <span className="tabular-nums truncate max-w-24">{sizeText}</span>
+                  )}
                   {score && gpuSpecs && (
                     <span className="rounded px-1.5 py-0.5 text-[11px] font-bold tabular-nums" style={vramStyle(score.memPct)}>
                       {Math.round(score.memPct)}%
