@@ -106,12 +106,15 @@ function getProxyDispatcher(): ProxyAgent | undefined {
   return new ProxyAgent(proxyUrl);
 }
 
-async function fetchPage(url: string): Promise<string> {
+async function fetchPage(url: string, hxRequest = false): Promise<string> {
   const dispatcher = getProxyDispatcher();
   const options: RequestInit & { dispatcher?: ProxyAgent } = {
     headers: {
       "User-Agent":
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      // ollama.com search paginates via HTMX; a bare ?page=N request
+      // returns an empty body unless this header is present.
+      ...(hxRequest ? { "HX-Request": "true" } : {}),
     },
   };
   if (dispatcher) options.dispatcher = dispatcher;
@@ -123,21 +126,39 @@ async function fetchPage(url: string): Promise<string> {
 export async function scrapeAllModels(): Promise<ScrapedModel[]> {
   const modelMap = new Map<string, ScrapedModel>();
 
-  for (let page = 1; page <= MAX_PAGES; page++) {
-    const url = page === 1
-      ? "https://ollama.com/search"
-      : `https://ollama.com/search?page=${page}`;
-    try {
-      const html = await fetchPage(url);
-      const models = parseModelsFromHtml(html);
-      if (models.length === 0) break;
-      for (const model of models) {
-        if (!modelMap.has(model.id)) {
-          modelMap.set(model.id, model);
-        }
+  // /library (no /search) renders the full catalog in one response; ollama.com
+  // uses HTMX for the "load more" rows, so a bare request gets everything.
+  const libraryUrl = "https://ollama.com/library";
+  try {
+    const html = await fetchPage(libraryUrl, true);
+    const models = parseModelsFromHtml(html);
+    for (const model of models) {
+      if (!modelMap.has(model.id)) {
+        modelMap.set(model.id, model);
       }
-    } catch {
-      break;
+    }
+  } catch {
+    // fall through to the search-page walk
+  }
+
+  // Fallback: page through /search (HTMX: pages 2+ need the HX-Request header).
+  if (modelMap.size === 0) {
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const url = page === 1
+        ? "https://ollama.com/search"
+        : `https://ollama.com/search?page=${page}`;
+      try {
+        const html = await fetchPage(url, page > 1);
+        const models = parseModelsFromHtml(html);
+        if (models.length === 0) break;
+        for (const model of models) {
+          if (!modelMap.has(model.id)) {
+            modelMap.set(model.id, model);
+          }
+        }
+      } catch {
+        break;
+      }
     }
   }
 
