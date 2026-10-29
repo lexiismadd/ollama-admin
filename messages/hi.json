@@ -218,7 +218,8 @@
     "installStarted": "\"{name}\" इंस्टॉल हो रहा है…",
     "hfBadge": "HF",
     "contextMin": "न्यूनतम संदर्भ",
-    "contextMax": "अधिकतम संदर्भ"
+    "contextMax": "अधिकतम संदर्भ",
+    "noLimit": "कोई सीमा नहीं"
   },
   "admin": {
     "models": {
