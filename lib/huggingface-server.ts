@@ -1,15 +1,20 @@
 /**
- * Server-only HuggingFace model search client.
+ * Server-only HuggingFace model search client with live enrichment.
  *
- * When HUGGINGFACE_API_KEY is set, the Discover search also queries
- * HuggingFace live. HF results are intentionally NOT persisted into the
- * catalog cache — "Refresh catalog" never touches HF models that are not
- * installed.
+ * When HUGGINGFACE_API_KEY is set, the Discover search queries HuggingFace
+ * live and surfaces params/quant/context/size where available. Enriched
+ * details are cached in the HuggingFaceModel table with a 7-day TTL — a
+ * separate table from CatalogModel so "Refresh catalog" (ollama.com-only,
+ * deleteMany + createMany) never touches HF rows.
  */
+import { prisma } from "@/lib/prisma";
+import { formatParameterSize } from "@/lib/catalog-cloud";
 
 const HF_BASE_URL = "https://huggingface.co";
 const SEARCH_TIMEOUT_MS = 15_000;
+const DETAIL_TIMEOUT_MS = 12_000;
 const DEFAULT_LIMIT = 20;
+const HF_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export interface HuggingFaceModel {
   id: string;
@@ -81,11 +86,172 @@ export async function searchHuggingFaceModels(
   return data ?? [];
 }
 
-export function hfModelToEntry(model: HuggingFaceModel) {
+/** Total download size of the repo's weight files (.safetensors/.gguf/.bin). */
+async function fetchRepoSizeBytes(repoId: string): Promise<number | null> {
+  try {
+    const res = await hfFetch(`/api/models/${repoId}/tree/main?recursive=true`, {
+      signal: AbortSignal.timeout(DETAIL_TIMEOUT_MS),
+    });
+    const entries = (await res.json()) as Array<{ path?: string; size?: number; lfs?: { size?: number } }>;
+    let total = 0;
+    let found = false;
+    for (const e of entries) {
+      const p = (e.path ?? "").toLowerCase();
+      if (p.endsWith(".safetensors") || p.endsWith(".gguf") || p.endsWith(".bin")) {
+        total += e.lfs?.size ?? e.size ?? 0;
+        found = true;
+      }
+    }
+    return found ? total : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Total parameter count from safetensors-metadata (<index>.safetensors.index.json). */
+async function fetchParameterCount(repoId: string, siblings: Array<{ rfilename: string }> | undefined): Promise<number | null> {
+  const indexFile = (siblings ?? []).map((s) => s.rfilename).find((f) => f.endsWith(".safetensors.index.json"));
+  if (!indexFile) return null;
+  try {
+    const res = await hfFetch(`/api/models/${repoId}/safetensors-metadata/${indexFile}`, {
+      signal: AbortSignal.timeout(DETAIL_TIMEOUT_MS),
+    });
+    const data = (await res.json()) as { index?: { metadata?: { total_parameters?: number } } };
+    return data?.index?.metadata?.total_parameters ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Context length from config.json (max_position_embeddings / context_length). */
+async function fetchContextLength(repoId: string): Promise<number | null> {
+  try {
+    const res = await fetch(
+      `${HF_BASE_URL}/${repoId}/resolve/main/config.json?download=true`,
+      {
+        headers: {
+          ...(process.env.HUGGINGFACE_API_KEY ? { Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}` } : {}),
+          "User-Agent": "ollama-admin/0.18",
+        },
+        signal: AbortSignal.timeout(DETAIL_TIMEOUT_MS),
+      }
+    );
+    if (!res.ok) return null;
+    const config = (await res.json()) as Record<string, unknown>;
+    return extractContextFromConfig(config);
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve context length that may live in a nested sub-config (text_config). */
+function extractContextFromConfig(value: unknown, depth = 0): number | null {
+  if (depth > 4 || value == null || typeof value !== "object") return null;
+  for (const [key, v] of Object.entries(value)) {
+    const k = key.toLowerCase();
+    if (["max_position_embeddings", "context_length", "max_seq_len", "n_positions", "max_length"].includes(k)
+      && typeof v === "number" && v > 0) {
+      return v;
+    }
+    if (typeof v === "object") {
+      const found = extractContextFromConfig(v, depth + 1);
+      if (found != null) return found;
+    }
+  }
+  return null;
+}
+
+function formatSizeBytes(bytes: number): string {
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+/** Enrich one HF search result (cached 7d in HuggingFaceModel) into a catalog entry. */
+export async function hfModelToEntry(model: HuggingFaceModel) {
   const id = `hf.co/${model.id}`;
   const quantTag = tagFromSiblings(model);
   const familyTag = (model.tags ?? []).find((tg) => !tg.includes(":") && !["transformers", "safetensors", "conversational", "arxiv", "license", "endpoints_compatible", "eval-results"].some((p) => tg.startsWith(p))) ?? model.library_name ?? null;
   const baseModel = (model.tags ?? []).find((tg) => tg.startsWith("base_model:") && !tg.startsWith("base_model:finetune"))?.slice("base_model:".length) ?? null;
+
+  // Cache hit: reuse enriched metadata if fresh.
+  let cached = null;
+  try {
+    cached = await prisma.huggingFaceModel.findUnique({ where: { id: model.id } });
+  } catch {
+    // cache read is best-effort
+  }
+  const fresh = cached != null && Date.now() - (cached.cachedAt?.getTime() ?? 0) < HF_CACHE_TTL;
+
+  let parameterSize: string | null = null;
+  let quantizationLevel: string | null = null;
+  let contextLength: number | null = null;
+  let sizeBytes: number | null = null;
+  let sizeLabel: string | null = null;
+  if (cached != null) {
+    if (fresh) {
+      parameterSize = cached.parameterSize;
+      quantizationLevel = cached.quantizationLevel;
+      contextLength = cached.contextLength;
+      sizeBytes = cached.sizeBytes != null ? Number(cached.sizeBytes) : null;
+      sizeLabel = cached.sizeLabel;
+    } else {
+      // reuse family/parent metadata from the stale row as fallbacks
+      parameterSize = cached.parameterSize;
+      quantizationLevel = cached.quantizationLevel;
+      contextLength = cached.contextLength;
+      sizeBytes = cached.sizeBytes != null ? Number(cached.sizeBytes) : null;
+      sizeLabel = cached.sizeLabel;
+    }
+  }
+
+  if (!fresh) {
+    try {
+      const paramCount = await fetchParameterCount(model.id, model.siblings);
+      const size = await fetchRepoSizeBytes(model.id);
+      const ctx = await fetchContextLength(model.id);
+      parameterSize = paramCount != null ? formatParameterSize(String(paramCount)) ?? null : null;
+      quantizationLevel = quantTag || null;
+      contextLength = ctx;
+      sizeBytes = size;
+      sizeLabel = size != null ? formatSizeBytes(size) : null;
+      // Best-effort cache write (upsert keyed on repo id).
+      try {
+        await prisma.huggingFaceModel.upsert({
+          where: { id: model.id },
+          create: {
+            id: model.id,
+            family: familyTag,
+            parentModel: baseModel,
+            parameterSize,
+            quantizationLevel,
+            contextLength,
+            sizeBytes: sizeBytes != null ? BigInt(sizeBytes) : null,
+            sizeLabel,
+            capabilities: capabilitiesFromPipeline(model.pipeline_tag, model.library_name).join(","),
+            pulls: model.downloads != null ? String(model.downloads) : null,
+            updated: formatRelativeTimeLocal(model.lastModified),
+            cachedAt: new Date(),
+          },
+          update: {
+            family: familyTag,
+            parentModel: baseModel,
+            parameterSize,
+            quantizationLevel,
+            contextLength,
+            sizeBytes: sizeBytes != null ? BigInt(sizeBytes) : null,
+            sizeLabel,
+            capabilities: capabilitiesFromPipeline(model.pipeline_tag, model.library_name).join(","),
+            pulls: model.downloads != null ? String(model.downloads) : null,
+            cachedAt: new Date(),
+          },
+        });
+      } catch {
+        // cache write is best-effort
+      }
+    } catch {
+      // enrichment is best-effort; fall through with search-list metadata
+    }
+  }
 
   return {
     id,
@@ -98,11 +264,11 @@ export function hfModelToEntry(model: HuggingFaceModel) {
     updated: formatRelativeTimeLocal(model.lastModified),
     family: familyTag,
     parentModel: baseModel,
-    parameterSize: null,
-    quantizationLevel: quantTag || null,
-    contextLength: null,
-    sizeBytes: null,
-    sizeLabel: null,
+    parameterSize,
+    quantizationLevel,
+    contextLength,
+    sizeBytes,
+    sizeLabel,
     url: `${HF_BASE_URL}/${model.id}`,
     isCloud: false,
     isMLX: model.library_name === "mlx" || /-mlx/.test(model.id),

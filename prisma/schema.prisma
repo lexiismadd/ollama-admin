@@ -126,3 +126,18 @@ model Settings {
   key   String @id
   value String
 }
+
+model HuggingFaceModel {
+  id                String    @id
+  family            String?
+  parentModel       String?
+  parameterSize     String?
+  quantizationLevel String?
+  contextLength     Int?
+  sizeBytes         BigInt?
+  sizeLabel         String?
+  capabilities      String    @default("")
+  pulls             String?
+  updated           String?
+  cachedAt          DateTime  @default(now())
+}
