@@ -220,7 +220,8 @@
     "installStarted": "Instal·lant \"{name}\"…",
     "hfBadge": "HF",
     "contextMin": "Contexte mín.",
-    "contextMax": "Contexte màx."
+    "contextMax": "Contexte màx.",
+    "noLimit": "Sense límit"
   },
   "admin": {
     "models": {

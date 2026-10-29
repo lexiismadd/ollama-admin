@@ -48,6 +48,14 @@ type FilterType = "all" | "local" | "cloud" | "mlx";
 
 const CTX_SLIDER_MAX = 1048576;
 
+// Common context-window ladder the sliders snap to; the catalog maximum is
+// appended as the final step so the range always reaches the data.
+const COMMON_CTX_LADDER = [0, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
+
+// Common quantization levels (GGUF + cloud API vocabulary) shown alongside
+// whatever values are present in the cache / search results.
+const COMMON_QUANTS = ["Q2_K", "Q3_K_M", "Q4_K_S", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0", "BF16", "FP8", "FP16", "INT4", "MXFP4", "NVFP4", "MLX"];
+
 const GRADE_LABELS: Record<Grade, string> = {
   S: "≥50 t/s", A: "≥30 t/s", B: "≥15 t/s", C: "≥8 t/s", D: "≥3 t/s", F: "no fit",
 };
@@ -169,7 +177,8 @@ export default function DiscoverPage() {
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [selectedQuants, setSelectedQuants] = useState<string[]>([]);
   const [ctxMin, setCtxMin] = useState(0);
-  const [ctxMax, setCtxMax] = useState(CTX_SLIDER_MAX);
+  // null = no upper limit (default)
+  const [ctxMax, setCtxMax] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [manualOpen, setManualOpen] = useState(false);
@@ -386,7 +395,7 @@ export default function DiscoverPage() {
       if (filterType === "mlx" && !row.isMLX) return false;
       if (filterType === "local" && (row.isCloud || row.isMLX)) return false;
       if (selectedQuants.length > 0 && !selectedQuants.includes(row.quantizationLevel ?? "")) return false;
-      if (row.contextLength != null && (row.contextLength < ctxMin || row.contextLength > ctxMax)) return false;
+      if (row.contextLength != null && (row.contextLength < ctxMin || (ctxMax != null && row.contextLength > ctxMax))) return false;
       if (fitsGpuOnly && gpuSpecs) {
         const sizeGB = rowSizeGB(row);
         if (sizeGB !== null && sizeGB > gpuSpecs.vramGB) return false;
@@ -440,10 +449,14 @@ export default function DiscoverPage() {
   );
 
   const quantOptions = useMemo(
-    () =>
-      Array.from(
-        new Set(models.map((m) => m.quantizationLevel).filter((q): q is string => Boolean(q)))
-      ).sort(),
+    () => {
+      const seen = new Set<string>(COMMON_QUANTS);
+      const fromData = models
+        .map((m) => m.quantizationLevel)
+        .filter((q): q is string => Boolean(q))
+        .filter((q) => !seen.has(q));
+      return [...COMMON_QUANTS, ...[...new Set(fromData)].sort()];
+    },
     [models]
   );
 
@@ -468,6 +481,21 @@ export default function DiscoverPage() {
     const lengths = models.map((m) => m.contextLength).filter((l): l is number => l != null);
     return { min: 0, max: Math.max(CTX_SLIDER_MAX, ...lengths, 0) };
   }, [models]);
+
+  // Slider steps: the common ladder filtered to the catalog max, with the
+  // exact max appended so the range always reaches the widest context seen.
+  const ctxSteps = useMemo(() => {
+    const steps = COMMON_CTX_LADDER.filter((s) => s <= ctxBounds.max);
+    if (steps[steps.length - 1] !== ctxBounds.max) steps.push(ctxBounds.max);
+    return steps;
+  }, [ctxBounds.max]);
+
+  // Keep slider values valid when the data (and thus ctxSteps) shrinks.
+  useEffect(() => {
+    const maxStep = ctxSteps[ctxSteps.length - 1];
+    if (ctxMin > maxStep) setCtxMin(maxStep);
+    if (ctxMax != null && ctxMax > maxStep) setCtxMax(null);
+  }, [ctxSteps, ctxMax, ctxMin]);
 
   return (
     <div className="p-6">
@@ -597,32 +625,53 @@ export default function DiscoverPage() {
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <input
-              type="range"
-              min={0}
-              max={ctxBounds.max}
-              step={4096}
-              value={ctxMin}
-              onChange={(e) => { const v = Number(e.target.value); setCtxMin(v); if (v > ctxMax) setCtxMax(v); }}
-              aria-label={t("contextMin")}
-              className="w-28 accent-[hsl(var(--primary))]"
-            />
-            <span className="w-14 text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">{formatContextLength(ctxMin)}</span>
+          <div className="flex flex-col items-start gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="w-20 shrink-0 text-right text-xs text-[hsl(var(--muted-foreground))]">{t("contextMin")}</span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(0, ctxSteps.length - 1)}
+                step={1}
+                value={Math.max(0, ctxSteps.indexOf(ctxMin))}
+                onChange={(e) => {
+                  const idx = Number(e.target.value);
+                  const v = ctxSteps[Math.min(idx, ctxSteps.length - 1)];
+                  setCtxMin(v);
+                  if (ctxMax != null && v > ctxMax) setCtxMax(v);
+                }}
+                aria-label={t("contextMin")}
+                className="w-44 accent-[hsl(var(--primary))]"
+              />
+            </div>
+            <span className="w-full text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+              {formatContextLength(ctxMin)}
+            </span>
           </div>
           <span className="text-xs text-[hsl(var(--muted-foreground))]">–</span>
-          <div className="flex items-center gap-1.5">
-            <input
-              type="range"
-              min={0}
-              max={ctxBounds.max}
-              step={4096}
-              value={ctxMax}
-              onChange={(e) => { const v = Number(e.target.value); setCtxMax(v); if (v < ctxMin) setCtxMin(v); }}
-              aria-label={t("contextMax")}
-              className="w-28 accent-[hsl(var(--primary))]"
-            />
-            <span className="w-14 text-left text-xs tabular-nums text-[hsl(var(--muted-foreground))]">{formatContextLength(ctxMax)}</span>
+          <div className="flex flex-col items-start gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="w-20 shrink-0 text-right text-xs text-[hsl(var(--muted-foreground))]">{t("contextMax")}</span>
+              <input
+                type="range"
+                min={0}
+                max={Math.max(0, ctxSteps.length - 1)}
+                step={1}
+                value={ctxMax == null ? ctxSteps.length - 1 : Math.max(0, ctxSteps.indexOf(ctxMax))}
+                onChange={(e) => {
+                  const idx = Number(e.target.value);
+                  const isTop = idx >= ctxSteps.length - 1;
+                  const v = isTop ? null : ctxSteps[Math.min(idx, ctxSteps.length - 2)];
+                  setCtxMax(v);
+                  if (v != null && v < ctxMin) setCtxMin(v);
+                }}
+                aria-label={t("contextMax")}
+                className="w-44 accent-[hsl(var(--primary))]"
+              />
+            </div>
+            <span className="w-full text-right text-xs tabular-nums text-[hsl(var(--muted-foreground))]">
+              {ctxMax == null ? t("noLimit") : formatContextLength(ctxMax)}
+            </span>
           </div>
         </div>
       </div>

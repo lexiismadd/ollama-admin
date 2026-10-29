@@ -218,7 +218,8 @@
     "installStarted": "正在安装 \"{name}\"…",
     "hfBadge": "HF",
     "contextMin": "最小上下文",
-    "contextMax": "最大上下文"
+    "contextMax": "最大上下文",
+    "noLimit": "无限制"
   },
   "admin": {
     "models": {

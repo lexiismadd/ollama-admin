@@ -218,7 +218,8 @@
     "installStarted": "Installing \"{name}\"…",
     "hfBadge": "HF",
     "contextMin": "Min context",
-    "contextMax": "Max context"
+    "contextMax": "Max context",
+    "noLimit": "No limit, arr!"
   },
   "admin": {
     "models": {

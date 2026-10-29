@@ -218,7 +218,8 @@
     "installStarted": "\"{name}\" をインストール中…",
     "hfBadge": "HF",
     "contextMin": "最小コンテキスト",
-    "contextMax": "最大コンテキスト"
+    "contextMax": "最大コンテキスト",
+    "noLimit": "制限なし"
   },
   "admin": {
     "models": {
