@@ -30,13 +30,27 @@ export async function GET(req: NextRequest) {
     }
 
     // HuggingFace search: live-only when HUGGINGFACE_API_KEY is set. HF rows
-    // are never persisted — the 24h catalog cache stays ollama.com-only.
+    // are cached separately (7-day TTL in HuggingFaceModel) and are never
+    // wiped by the 24h ollama.com catalog refresh.
     if (search && isHuggingFaceEnabled()) {
       try {
         const hfModels = await searchHuggingFaceModels(search);
-        const hfEntries = hfModels.map(hfModelToEntry).filter((entry) =>
-          capList.length === 0 || capList.every((c) => entry.capabilities.includes(c))
-        );
+        const hfEntries: Awaited<ReturnType<typeof hfModelToEntry>>[] = [];
+        let index = 0;
+        async function enrichWorker() {
+          while (index < hfModels.length) {
+            const model = hfModels[index++];
+            try {
+              const entry = await hfModelToEntry(model);
+              if (capList.length === 0 || capList.every((c) => entry.capabilities.includes(c))) {
+                hfEntries.push(entry);
+              }
+            } catch {
+              // per-model enrichment failure is skipped
+            }
+          }
+        }
+        await Promise.all(Array.from({ length: Math.min(6, Math.max(1, hfModels.length)) }, enrichWorker));
         const known = new Set(models.map((m) => m.id));
         models = [...models, ...hfEntries.filter((entry) => !known.has(entry.id))];
       } catch {
